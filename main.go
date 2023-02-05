@@ -22,7 +22,7 @@ func main() {
 	cq, err := ibverbs.NewCompletionQueue(c, 10)
 	fmt.Println(cq, err)
 
-	qp, err := ibverbs.NewQueuePair(pd, cq)
+	qp, err := ibverbs.NewQueuePair(c, pd, cq)
 
 	fmt.Println(qp, err)
 	fmt.Println(qp.Qpn())

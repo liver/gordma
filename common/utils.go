@@ -6,7 +6,7 @@ import (
 	"syscall"
 )
 
-func NewErrorOrNil(name string, errno C.int) error {
+func NewErrorOrNil(name string, errno int32) error {
 	if errno > 0 {
 		return os.NewSyscallError(name, syscall.Errno(errno))
 	}

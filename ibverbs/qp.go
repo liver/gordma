@@ -10,6 +10,7 @@ import (
 	"log"
 	"math/rand"
 	"time"
+	"encoding/binary"
 )
 
 
@@ -77,8 +78,8 @@ func (q *queuePair) Close() error {
 }
 
 func (q *queuePair) modify(attr *C.struct_ibv_qp_attr, mask int) error {
-	errno := C.ibv_modify_qp(q.qp, attr, mask)
-	return common.NewErrorOrNil("ibv_modify_qp",errno)
+	errno := C.ibv_modify_qp(q.qp, attr, C.int(mask))
+	return common.NewErrorOrNil("ibv_modify_qp",int32(int32(errno)))
 }
 
 func (q *queuePair) Init() error {
@@ -105,7 +106,7 @@ func (q *queuePair) Ready2Receive(destGid uint16, destQpn, destPsn uint32) error
 	// Minimum RNR NAK timer (range 0..31)
 	attr.min_rnr_timer = 26
 	attr.ah_attr.is_global = 0
-	attr.ah_attr.dgid = C.uint16_t(destGid)
+	attr.ah_attr.dlid = C.uint16_t(destGid)
 	//  attr.ah_attr.dlid = C.uint16_t(destLid)
 	attr.ah_attr.sl = 0
 	attr.ah_attr.src_path_bits = 0
@@ -154,7 +155,7 @@ func (q *queuePair) PostSendImm(wr *sendWorkRequest,  imm uint32) error {
 		wr.sendWr.opcode = IBV_WR_SEND_WITH_IMM
 		// always send inline if there is immediate data
 		wr.sendWr.send_flags = IBV_SEND_INLINE
-		wr.sendWr.imm_data = C.uint32_t(imm)
+		binary.BigEndian.PutUint32(wr.sendWr.anon0[:4],imm)
 	} else {
 		// post_send
 		wr.sendWr.opcode = IBV_WR_SEND
@@ -174,8 +175,8 @@ func (q *queuePair) PostSendImm(wr *sendWorkRequest,  imm uint32) error {
 	}
 	wr.sendWr.wr_id = wr.createWrId()
 	var bad *C.struct_ibv_send_wr
-	errno := C.ibv_post_send(q.qp, &wr.sendWr, &bad)
-	return common.NewErrorOrNil("ibv_post_send", errno)
+	errno := C.ibv_post_send(q.qp, wr.sendWr, &bad)
+	return common.NewErrorOrNil("ibv_post_send", int32(errno))
 }
 
 func (q *queuePair) PostReceive(wr *receiveWorkRequest) error  {
@@ -191,8 +192,8 @@ func (q *queuePair) PostReceive(wr *receiveWorkRequest) error  {
 	sge.length = C.uint32_t(wr.mr.mr.length)
 	sge.lkey = wr.mr.mr.lkey
 	wr.recvWr.wr_id = wr.createWrId()
-	errno := C.ibv_post_recv(q.qp, &wr.recvWr, &bad)
-	return common.NewErrorOrNil("ibv_post_recv", errno)
+	errno := C.ibv_post_recv(q.qp, wr.recvWr, &bad)
+	return common.NewErrorOrNil("ibv_post_recv", int32(errno))
 }
 
 func (q *queuePair) PostWrite(wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error  {
@@ -219,13 +220,15 @@ func (q *queuePair) PostWriteImm(wr *sendWorkRequest, remoteAddr uint64, rkey ui
 	sge.length = C.uint32_t(wr.mr.mr.length)
 	sge.lkey = wr.mr.mr.lkey
 	// TODO: validate
-	wr.sendWr.wr.remoteAddr = remoteAddr
-	wr.sendWr.wr.rkey = rkey
+	binary.BigEndian.PutUint64(wr.sendWr.wr[:8],remoteAddr)
+	binary.BigEndian.PutUint32(wr.sendWr.wr[8:12],rkey)
+	// wr.sendWr.wr.remoteAddr = remoteAddr
+	// wr.sendWr.wr.rkey = rkey
 
 	wr.sendWr.wr_id = wr.createWrId()
 
-	errno := C.ibv_post_send(q.qp, &wr.sendWr,&bad)
-	return common.NewErrorOrNil("[PostWrite]ibv_post_send", errno)
+	errno := C.ibv_post_send(q.qp, wr.sendWr,&bad)
+	return common.NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
 }
 
 func (q *queuePair) PostRead(wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error {
@@ -239,11 +242,13 @@ func (q *queuePair) PostRead(wr *sendWorkRequest, remoteAddr uint64, rkey uint32
 	sge.length = C.uint32_t(wr.mr.mr.length)
 	sge.lkey = wr.mr.mr.lkey
 	// TODO: validate
-	wr.sendWr.wr.remoteAddr = remoteAddr
-	wr.sendWr.wr.rkey = rkey
+	binary.BigEndian.PutUint64(wr.sendWr.wr[:8],remoteAddr)
+	binary.BigEndian.PutUint32(wr.sendWr.wr[8:12],rkey)
+	// wr.sendWr.wr.remoteAddr = remoteAddr
+	// wr.sendWr.wr.rkey = rkey
 
 	wr.sendWr.wr_id = wr.createWrId()
 
-	errno := C.ibv_post_send(q.qp, &wr.sendWr,&bad)
-	return common.NewErrorOrNil("[PostWrite]ibv_post_send", errno)
+	errno := C.ibv_post_send(q.qp, wr.sendWr,&bad)
+	return common.NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
 }
