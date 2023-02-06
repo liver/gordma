@@ -5,8 +5,10 @@ import (
 	"gordma/ibverbs"
 )
 
+var is_server bool
+
 func main() {
-	c, err := ibverbs.NewRdmaContext("rxe_0", 1, 0)
+	c, err := ibverbs.NewRdmaContext("mlx_5", 1, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -23,6 +25,12 @@ func main() {
 	fmt.Println(cq, err)
 
 	qp, err := ibverbs.NewQueuePair(c, pd, cq)
+
+	if is_server {
+		err = ibverbs.Connect_qp_server(c, qp)
+	} else {
+		err = ibverbs.Connect_qp_client(c, qp)
+	}
 
 	fmt.Println(qp, err)
 	fmt.Println(qp.Qpn())
