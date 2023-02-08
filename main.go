@@ -1,11 +1,10 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"gordma/ibverbs"
 )
-
-var is_server bool
 
 func main() {
 	c, err := ibverbs.NewRdmaContext("mlx_5", 1, 0)
@@ -29,7 +28,10 @@ func main() {
 	fmt.Println(qp, err)
 	fmt.Println(qp.Qpn())
 
-	if is_server {
+	isServer := flag.Bool("s", false, "")
+	flag.Parse()
+
+	if *isServer {
 		err = ibverbs.ConnectQpServer(c, qp)
 	} else {
 		err = ibverbs.ConnectQpClient(c, qp)
