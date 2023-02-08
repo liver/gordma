@@ -26,14 +26,15 @@ func main() {
 
 	qp, err := ibverbs.NewQueuePair(c, pd, cq)
 
-	if is_server {
-		err = ibverbs.Connect_qp_server(c, qp)
-	} else {
-		err = ibverbs.Connect_qp_client(c, qp)
-	}
-
 	fmt.Println(qp, err)
 	fmt.Println(qp.Qpn())
+
+	if is_server {
+		err = ibverbs.ConnectQpServer(c, qp)
+	} else {
+		err = ibverbs.ConnectQpClient(c, qp)
+	}
+	fmt.Println(err)
 
 	fmt.Println("\n---------------- close ---------------")
 	fmt.Println(qp.Close())

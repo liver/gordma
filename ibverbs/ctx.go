@@ -19,6 +19,7 @@ type rdmaContext struct {
 	Port int
 	Guid net.HardwareAddr
 	ctx  *C.struct_ibv_context
+	portAttr C.struct_ibv_port_attr
 }
 
 type rlimir struct {
@@ -44,6 +45,8 @@ func NewRdmaContext(name string, port, index int) (*rdmaContext, error) {
 	var count C.int
 	var ctx *C.struct_ibv_context
 	var guid net.HardwareAddr
+	var portAttr C.struct_ibv_port_attr
+
 	deviceList, err := C.ibv_get_device_list(&count)
 	if err != nil {
 		return nil, err
@@ -66,6 +69,12 @@ func NewRdmaContext(name string, port, index int) (*rdmaContext, error) {
 			return nil, err
 		}
 		guid = net.HardwareAddr(gid[8:])
+
+		errno, err = C.___ibv_query_port(ctx, portC, &portAttr)
+		if errno != 0 || err != nil {
+			return nil, err
+		}
+		guid = net.HardwareAddr(gid[8:])
 		// next device
 		prevDevicePtr := uintptr(unsafe.Pointer(devicePtr))
 		sizeofPtr := unsafe.Sizeof(devicePtr)
@@ -80,6 +89,7 @@ func NewRdmaContext(name string, port, index int) (*rdmaContext, error) {
 		ctx:  ctx,
 		Port: port,
 		Guid: guid,
+		portAttr: portAttr,
 	}, nil
 }
 
