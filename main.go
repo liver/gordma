@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"gordma/ibverbs"
+	"time"
 )
 
 func main() {
@@ -18,7 +19,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(mr, mr.RemoteKey())
+	fmt.Println(mr, mr.RemoteKey(), mr.LocalKey())
 
 	cq, err := ibverbs.NewCompletionQueue(c, 10)
 	fmt.Println(cq, err)
@@ -32,11 +33,17 @@ func main() {
 	flag.Parse()
 
 	if *isServer {
-		err = ibverbs.ConnectQpServer(c, qp)
+		err = ibverbs.ConnectQpServer(c, qp, mr)
 	} else {
-		err = ibverbs.ConnectQpClient(c, qp)
+		err = ibverbs.ConnectQpClient(c, qp, mr)
 	}
-	fmt.Println(err)
+	fmt.Println(qp.State(), mr.RemoteKey(), mr.RemoteAddr(), err)
+
+	if *isServer {
+		err = runServer(qp, mr)
+	} else {
+		err = runClient(qp, mr)
+	}
 
 	fmt.Println("\n---------------- close ---------------")
 	fmt.Println(qp.Close())
@@ -44,4 +51,19 @@ func main() {
 	fmt.Println(mr.Close())
 	fmt.Println(pd.Close())
 	fmt.Println(c.Close())
+}
+
+func runServer(qp *ibverbs.QueuePair, mr *ibverbs.MemoryRegion) error {
+	wr := ibverbs.NewSendWorkRequest(mr)
+	fmt.Printf("%d\n", &mr.Buf[0])
+	mr.Buf[0] = 8
+	qp.PostWrite(wr, mr.RemoteAddr(), mr.RemoteKey())
+	return nil
+}
+
+func runClient(qp *ibverbs.QueuePair, mr *ibverbs.MemoryRegion) error {
+	time.Sleep(1 * time.Second)
+	fmt.Printf("%d\n", &mr.Buf[0])
+	fmt.Println(mr.Buf[0])
+	return nil
 }

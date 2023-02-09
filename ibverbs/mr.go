@@ -1,3 +1,4 @@
+//go:build linux
 // +build linux
 
 package ibverbs
@@ -7,20 +8,22 @@ import "C"
 import (
 	"errors"
 	"fmt"
-	"golang.org/x/sys/unix"
 	"runtime"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
-type memoryRegion struct {
-	remoteKey uint32
-	isMmap    bool
-	buf       []byte
-	PD        *protectDomain
-	mr        *C.struct_ibv_mr
+type MemoryRegion struct {
+	remoteKey  uint32
+	remoteAddr uint64
+	isMmap     bool
+	Buf        []byte
+	PD         *protectDomain
+	mr         *C.struct_ibv_mr
 }
 
-func NewMemoryRegion(pd *protectDomain, size int, isMmap bool) (*memoryRegion, error) {
+func NewMemoryRegion(pd *protectDomain, size int, isMmap bool) (*MemoryRegion, error) {
 	var (
 		buf []byte
 		err error
@@ -41,43 +44,50 @@ func NewMemoryRegion(pd *protectDomain, size int, isMmap bool) (*memoryRegion, e
 	if mrC == nil {
 		return nil, errors.New("ibv_reg_mr: failed to reg mr")
 	}
-	mr := &memoryRegion{
-		buf: buf,
-		PD:  pd,
-		mr:  mrC,
+	mr := &MemoryRegion{
+		Buf:       buf,
+		PD:        pd,
+		mr:        mrC,
 		remoteKey: uint32(mrC.rkey),
 	}
-	runtime.SetFinalizer(mr, (*memoryRegion).finalize)
+	runtime.SetFinalizer(mr, (*MemoryRegion).finalize)
 	return mr, nil
 }
 
-func (m *memoryRegion) RemoteKey() uint32 {
+func (m *MemoryRegion) RemoteKey() uint32 {
 	return m.remoteKey
 }
 
-func (m *memoryRegion) String() string {
-	if m.buf == nil {
-		return "memoryRegion@closed"
-	}
-	return fmt.Sprintf("memoryRegion@%x[%d]", &m.buf[0], len(m.buf))
+func (m *MemoryRegion) RemoteAddr() uint64 {
+	return m.remoteAddr
+}
+func (m *MemoryRegion) LocalKey() uint32 {
+	return uint32(m.mr.lkey)
 }
 
-func (m *memoryRegion) finalize() {
+func (m *MemoryRegion) String() string {
+	if m.Buf == nil {
+		return "memoryRegion@closed"
+	}
+	return fmt.Sprintf("memoryRegion@%x[%d]", &m.Buf[0], len(m.Buf))
+}
+
+func (m *MemoryRegion) finalize() {
 	panic("finalized unclosed memory region")
 }
 
-func (m *memoryRegion) Close() error {
+func (m *MemoryRegion) Close() error {
 	errno := C.ibv_dereg_mr(m.mr)
 	if errno != 0 {
 		return errors.New("failed to dealloc mr")
 	}
 	if m.isMmap {
-		err := unix.Munmap(m.buf)
+		err := unix.Munmap(m.Buf)
 		if err != nil {
 			return err
 		}
 	} else {
-		m.buf = nil
+		m.Buf = nil
 	}
 
 	return nil

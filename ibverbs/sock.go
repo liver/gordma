@@ -18,9 +18,12 @@ var SockSyncMsg string = "sync"
 type qpInfo struct {
 	Lid   uint16
 	QpNum uint32
+	Psn   uint32
+	Rkey  uint32
+	Raddr uint64
 }
 
-func ConnectQpClient(ctx *rdmaContext, qp *queuePair) error {
+func ConnectQpClient(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion) error {
 	c, err := net.Dial("tcp", "localhost:8008")
 	if err != nil {
 		log.Println("dial error:", err)
@@ -32,7 +35,7 @@ func ConnectQpClient(ctx *rdmaContext, qp *queuePair) error {
 	defer c.Close()
 
 	bufNew := &bytes.Buffer{}
-	localQpInfo := qpInfo{Lid: uint16(ctx.portAttr.lid), QpNum: qp.Qpn()}
+	localQpInfo := qpInfo{Lid: uint16(ctx.portAttr.lid), QpNum: qp.Qpn(), Psn: qp.Psn(), Rkey: mr.RemoteKey(), Raddr: uint64(uintptr(mr.mr.addr))}
 	err = binary.Write(bufNew, binary.BigEndian, localQpInfo)
 	if err != nil {
 		return err
@@ -55,7 +58,10 @@ func ConnectQpClient(ctx *rdmaContext, qp *queuePair) error {
 
 	fmt.Println(remoteQpInfo)
 
-	err = modify_qp_to_rts(qp, remoteQpInfo.Lid, remoteQpInfo.QpNum)
+	mr.remoteAddr = remoteQpInfo.Raddr
+	mr.remoteKey = remoteQpInfo.Rkey
+
+	err = modify_qp_to_rts(qp, remoteQpInfo.Lid, remoteQpInfo.QpNum, remoteQpInfo.Psn)
 	if err != nil {
 		return err
 	}
@@ -68,7 +74,7 @@ func ConnectQpClient(ctx *rdmaContext, qp *queuePair) error {
 
 }
 
-func ConnectQpServer(ctx *rdmaContext, qp *queuePair) error {
+func ConnectQpServer(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion) error {
 	l, err := net.Listen("tcp", ":8008")
 	if err != nil {
 		log.Println("listen error:", err)
@@ -90,7 +96,7 @@ func ConnectQpServer(ctx *rdmaContext, qp *queuePair) error {
 	if err != nil || cnt == 0 {
 		return err
 	}
-	
+
 	remoteQpInfo := qpInfo{}
 	bufNew := bytes.NewBuffer(buf)
 	err = binary.Read(bufNew, binary.BigEndian, &remoteQpInfo)
@@ -101,7 +107,7 @@ func ConnectQpServer(ctx *rdmaContext, qp *queuePair) error {
 	fmt.Println(remoteQpInfo)
 
 	bufNew = &bytes.Buffer{}
-	localQpInfo := qpInfo{Lid: uint16(ctx.portAttr.lid), QpNum: qp.Qpn()}
+	localQpInfo := qpInfo{Lid: uint16(ctx.portAttr.lid), QpNum: qp.Qpn(), Psn: qp.Psn(), Rkey: mr.RemoteKey(), Raddr: uint64(uintptr(mr.mr.addr))}
 	err = binary.Write(bufNew, binary.BigEndian, localQpInfo)
 	if err != nil {
 		return err
@@ -110,7 +116,10 @@ func ConnectQpServer(ctx *rdmaContext, qp *queuePair) error {
 
 	fmt.Println(localQpInfo)
 
-	err = modify_qp_to_rts(qp, remoteQpInfo.Lid, remoteQpInfo.QpNum)
+	mr.remoteAddr = remoteQpInfo.Raddr
+	mr.remoteKey = remoteQpInfo.Rkey
+
+	err = modify_qp_to_rts(qp, remoteQpInfo.Lid, remoteQpInfo.QpNum, remoteQpInfo.Psn)
 	if err != nil {
 		return err
 	}
@@ -122,13 +131,13 @@ func ConnectQpServer(ctx *rdmaContext, qp *queuePair) error {
 	return nil
 }
 
-func modify_qp_to_rts(qp *queuePair, destLid uint16, destQpNum uint32) error {
+func modify_qp_to_rts(qp *QueuePair, destLid uint16, destQpNum uint32, destPsn uint32) error {
 	err := qp.Init()
 	if err != nil {
 		return err
 	}
 
-	err = qp.Ready2Receive(destLid, destQpNum, 1)
+	err = qp.Ready2Receive(destLid, destQpNum, destPsn)
 	if err != nil {
 		return err
 	}
