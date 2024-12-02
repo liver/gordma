@@ -23,10 +23,13 @@ type qpInfo struct {
 	Raddr uint64
 }
 
-func ConnectQpClient(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion) error {
-	c, err := net.Dial("tcp", "localhost:8008")
+func ConnectQpClient(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion, server string, port int) error {
+	if server == "" {
+		server = "localhost"
+	}
+	
+	c, err := net.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
 	if err != nil {
-		log.Println("dial error:", err)
 		return err
 	}
 	if c == nil {
@@ -40,9 +43,10 @@ func ConnectQpClient(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion) error {
 	if err != nil {
 		return err
 	}
-	c.Write(bufNew.Bytes())
-
-	fmt.Println(localQpInfo)
+	_, err = c.Write(bufNew.Bytes())
+	if err != nil {
+		return err
+	}
 
 	buf := make([]byte, 64)
 	cnt, err := c.Read(buf)
@@ -56,34 +60,40 @@ func ConnectQpClient(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion) error {
 		return err
 	}
 
-	fmt.Println(remoteQpInfo)
-
 	mr.remoteAddr = remoteQpInfo.Raddr
 	mr.remoteKey = remoteQpInfo.Rkey
 
-	err = modify_qp_to_rts(qp, remoteQpInfo.Lid, remoteQpInfo.QpNum, remoteQpInfo.Psn)
+	err = modify_qp_to_rts(ctx, qp, remoteQpInfo.Lid, remoteQpInfo.QpNum, remoteQpInfo.Psn)
 	if err != nil {
 		return err
 	}
 
 	/* sync with clients */
-	c.Write([]byte(SockSyncMsg))
-	c.Read(buf)
+	_, err = c.Write([]byte(SockSyncMsg))
+	if err != nil {
+		return err
+	}
+	_, err = c.Read(buf)
+	if err != nil {
+		return err
+	}
 
 	return nil
 
 }
 
-func ConnectQpServer(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion) error {
-	l, err := net.Listen("tcp", ":8008")
+func ConnectQpServer(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion, port int) error {
+	if port <= 0 {
+		port = getFreePort()
+	}
+
+	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		log.Println("listen error:", err)
 		return err
 	}
 
 	c, err := l.Accept()
 	if err != nil {
-		log.Println("accept error:", err)
 		return err
 	}
 	if c == nil {
@@ -104,40 +114,45 @@ func ConnectQpServer(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion) error {
 		return err
 	}
 
-	fmt.Println(remoteQpInfo)
-
 	bufNew = &bytes.Buffer{}
 	localQpInfo := qpInfo{Lid: uint16(ctx.portAttr.lid), QpNum: qp.Qpn(), Psn: qp.Psn(), Rkey: mr.RemoteKey(), Raddr: uint64(uintptr(mr.mr.addr))}
 	err = binary.Write(bufNew, binary.BigEndian, localQpInfo)
 	if err != nil {
 		return err
 	}
-	c.Write(bufNew.Bytes())
-
-	fmt.Println(localQpInfo)
+	_, err = c.Write(bufNew.Bytes())
+	if err != nil {
+		return err
+	}
 
 	mr.remoteAddr = remoteQpInfo.Raddr
 	mr.remoteKey = remoteQpInfo.Rkey
 
-	err = modify_qp_to_rts(qp, remoteQpInfo.Lid, remoteQpInfo.QpNum, remoteQpInfo.Psn)
+	err = modify_qp_to_rts(ctx, qp, remoteQpInfo.Lid, remoteQpInfo.QpNum, remoteQpInfo.Psn)
 	if err != nil {
 		return err
 	}
 
 	/* sync with clients */
-	c.Read(buf)
-	c.Write([]byte(SockSyncMsg))
+	_, err = c.Read(buf)
+	if err != nil {
+		return err
+	}
+	_, err = c.Write([]byte(SockSyncMsg))
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
-func modify_qp_to_rts(qp *QueuePair, destLid uint16, destQpNum uint32, destPsn uint32) error {
+func modify_qp_to_rts(ctx *rdmaContext, qp *QueuePair, destLid uint16, destQpNum uint32, destPsn uint32) error {
 	err := qp.Init()
 	if err != nil {
 		return err
 	}
 
-	err = qp.Ready2Receive(destLid, destQpNum, destPsn)
+	err = qp.Ready2Receive(ctx, destLid, destQpNum, destPsn)
 	if err != nil {
 		return err
 	}
@@ -147,4 +162,21 @@ func modify_qp_to_rts(qp *QueuePair, destLid uint16, destQpNum uint32, destPsn u
 		return err
 	}
 	return nil
+}
+
+func getFreePort() int {
+	// Open a listening socket on port 0
+	listener, _ := net.Listen("tcp", ":0")
+	defer func(listener net.Listener) {
+		_ = listener.Close()
+	}(listener)
+
+	// We receive a port allocated by the operating system
+	addr, ok := listener.Addr().(*net.TCPAddr)
+	if !ok {
+		// Error handling: addr is not *net.TCPAddr
+		log.Fatal("Listener address is not a TCP address")
+	}
+
+	return addr.Port
 }

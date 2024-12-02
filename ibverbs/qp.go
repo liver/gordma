@@ -56,6 +56,10 @@ func NewQueuePair(ctx *rdmaContext, pd *protectDomain, cq *completionQueue) (*Qu
 	}, nil
 }
 
+func (q QueuePair) CQ() *C.struct_ibv_cq {
+	return q.cq
+}
+
 func (q *QueuePair) Psn() uint32 {
 	return q.psn
 }
@@ -98,17 +102,16 @@ func (q *QueuePair) Init() error {
 }
 
 // Ready2Receive RTR
-// 尽管是 RTR，但是 send 和 receive 的配置都在这里提前配好
-func (q *QueuePair) Ready2Receive(destGid uint16, destQpn, destPsn uint32) error {
+func (q *QueuePair) Ready2Receive(ctx *rdmaContext, destGid uint16, destQpn, destPsn uint32) error {
 	attr := C.struct_ibv_qp_attr{}
 	attr.qp_state = C.IBV_QPS_RTR
-	attr.path_mtu = C.IBV_MTU_2048
+	attr.path_mtu = C.IBV_MTU_1024 // TODO(rdma): проверить
 	attr.dest_qp_num = C.uint32_t(destQpn)
 	attr.rq_psn = C.uint32_t(destPsn)
 	// this must be > 0 to avoid IBV_WC_REM_INV_REQ_ERR
 	attr.max_dest_rd_atomic = 1
 	// Minimum RNR NAK timer (range 0..31)
-	attr.min_rnr_timer = 26
+	attr.min_rnr_timer = 24
 	attr.ah_attr.is_global = 0
 	attr.ah_attr.dlid = C.uint16_t(destGid)
 	//  attr.ah_attr.dlid = C.uint16_t(destLid)
@@ -116,8 +119,20 @@ func (q *QueuePair) Ready2Receive(destGid uint16, destQpn, destPsn uint32) error
 	attr.ah_attr.src_path_bits = 0
 	attr.ah_attr.port_num = C.uint8_t(q.port)
 	mask := C.IBV_QP_STATE | C.IBV_QP_AV | C.IBV_QP_PATH_MTU | C.IBV_QP_DEST_QPN |
-		C.IBV_QP_RQ_PSN | C.IBV_QP_MAX_DEST_RD_ATOMIC | C.IBV_QP_MIN_RNR_TIMER
+		    C.IBV_QP_RQ_PSN | C.IBV_QP_MAX_DEST_RD_ATOMIC | C.IBV_QP_MIN_RNR_TIMER
+	
+	// TODO: проверить
+	attr.ah_attr.is_global = 1
+	attr.ah_attr.grh.dgid = ctx.gid
+	attr.ah_attr.grh.flow_label = 0;
+	attr.ah_attr.grh.hop_limit = 1;
+	attr.ah_attr.grh.sgid_index = 0;
+	attr.ah_attr.grh.sgid_index = C.uint8_t(0)
+	attr.ah_attr.grh.traffic_class = 0;
+	//
+
 	return q.modify(&attr, mask)
+	
 }
 
 // Ready2Send RTS
@@ -138,16 +153,6 @@ func (q *QueuePair) Ready2Send() error {
 		C.IBV_QP_SQ_PSN | C.IBV_QP_MAX_QP_RD_ATOMIC
 	return q.modify(&attr, mask)
 }
-
-/**
-QP action
-PostSend
-PostSendImm
-PostReceive
-PostRead
-PostWrite
-TODO: 将 sge 封装起来，尝试复用各个 Post 操作
-*/
 
 func (q *QueuePair) PostSend(wr *sendWorkRequest) error {
 	return q.PostSendImm(wr, 0)
@@ -209,27 +214,23 @@ func (q *QueuePair) PostWriteImm(wr *sendWorkRequest, remoteAddr uint64, rkey ui
 		return QPClosedErr
 	}
 
-	if imm > 0 {
+	// if imm > 0 {
+	// }else {
+	// }
 
-	} else {
-
-	}
-	var sge C.struct_ibv_sge
 	var bad *C.struct_ibv_send_wr
+	var sge C.struct_ibv_sge = C.struct_ibv_sge{
+		addr: C.uint64_t(uintptr(wr.mr.mr.addr)),
+		length: C.uint32_t(wr.mr.mr.length),
+		lkey: wr.mr.mr.lkey,
+	}
+	wr.sendWr.wr_id = wr.createWrId()
 	wr.sendWr.opcode = IBV_WR_RDMA_WRITE
 	wr.sendWr.send_flags = IBV_SEND_SIGNALED
 	wr.sendWr.sg_list = &sge
 	wr.sendWr.num_sge = 1
-	sge.addr = C.uint64_t(uintptr(wr.mr.mr.addr))
-	sge.length = C.uint32_t(wr.mr.mr.length)
-	sge.lkey = wr.mr.mr.lkey
-	// TODO: validate
 	binary.LittleEndian.PutUint64(wr.sendWr.wr[:8], remoteAddr)
 	binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], rkey)
-	// wr.sendWr.wr.remoteAddr = remoteAddr
-	// wr.sendWr.wr.rkey = rkey
-
-	wr.sendWr.wr_id = wr.createWrId()
 
 	errno := C.ibv_post_send(q.qp, wr.sendWr, &bad)
 	return common.NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
@@ -245,14 +246,22 @@ func (q *QueuePair) PostRead(wr *sendWorkRequest, remoteAddr uint64, rkey uint32
 	sge.addr = C.uint64_t(uintptr(wr.mr.mr.addr))
 	sge.length = C.uint32_t(wr.mr.mr.length)
 	sge.lkey = wr.mr.mr.lkey
-	// TODO: validate
 	binary.LittleEndian.PutUint64(wr.sendWr.wr[:8], remoteAddr)
 	binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], rkey)
-	// wr.sendWr.wr.remoteAddr = remoteAddr
-	// wr.sendWr.wr.rkey = rkey
 
 	wr.sendWr.wr_id = wr.createWrId()
 
 	errno := C.ibv_post_send(q.qp, wr.sendWr, &bad)
 	return common.NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
+}
+
+// Этот подход обеспечивает надежное выполнение операций RDMA, отслеживая их статус через CQ.
+func PerformWriteWithWait(qp *QueuePair, wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error {
+    // Пишем данные в удалённую память
+    if err := qp.PostWrite(wr, remoteAddr, rkey); err != nil {
+        return err
+    }
+
+    // Ожидаем завершения операции
+    return WaitForCompletion(qp.cq)
 }

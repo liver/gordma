@@ -15,11 +15,12 @@ import (
 )
 
 type rdmaContext struct {
-	Name string
-	Port int
-	Guid net.HardwareAddr
-	ctx  *C.struct_ibv_context
+	Name    string
+	Port    int
+	Guid    net.HardwareAddr
+	ctx     *C.struct_ibv_context
 	portAttr C.struct_ibv_port_attr
+	gid      C.union_ibv_gid
 }
 
 type rlimir struct {
@@ -34,11 +35,16 @@ func init() {
 	if err != 0 {
 		panic(err.Error())
 	}
-	fmt.Println(r)
-	//const maxUint64 = 1<<64 - 1
-	//if r.cur != uint64(maxUint64) || r.max != uint64(maxUint64) {
-	//	panic("ib: memlock rlimit is not unlimited")
-	//}
+}
+
+func CCharArrayToString(cArray [64]C.char) string {
+    // Find the null terminator to determine the length of a string
+    n := 0
+    for n < len(cArray) && cArray[n] != 0 {
+        n++
+    }
+    // Convert to Go string
+    return C.GoStringN((*C.char)(unsafe.Pointer(&cArray[0])), C.int(n))
 }
 
 func NewRdmaContext(name string, port, index int) (*rdmaContext, error) {
@@ -46,6 +52,7 @@ func NewRdmaContext(name string, port, index int) (*rdmaContext, error) {
 	var ctx *C.struct_ibv_context
 	var guid net.HardwareAddr
 	var portAttr C.struct_ibv_port_attr
+	var gid C.union_ibv_gid
 
 	deviceList, err := C.ibv_get_device_list(&count)
 	if err != nil {
@@ -58,12 +65,18 @@ func NewRdmaContext(name string, port, index int) (*rdmaContext, error) {
 	defer C.ibv_free_device_list(deviceList)
 	devicePtr := deviceList
 	device := *devicePtr
+	bufName := name
 	for device != nil && ctx == nil {
-		// TODO: device_name
+		bufName = CCharArrayToString(device.name)
+		// If a device name is specified, we check the name match
+		if name != "" && bufName != name {
+			continue
+		}
+
 		ctx = C.ibv_open_device(device)
-		var gid C.union_ibv_gid
 		portC := C.uint8_t(port)
 		indexC := C.int(index)
+		
 		errno, err := C.ibv_query_gid(ctx, portC, indexC, &gid)
 		if errno != 0 || err != nil {
 			return nil, err
@@ -74,22 +87,26 @@ func NewRdmaContext(name string, port, index int) (*rdmaContext, error) {
 		if errno != 0 || err != nil {
 			return nil, err
 		}
-		guid = net.HardwareAddr(gid[8:])
+		
 		// next device
 		prevDevicePtr := uintptr(unsafe.Pointer(devicePtr))
 		sizeofPtr := unsafe.Sizeof(devicePtr)
 		devicePtr = (**C.struct_ibv_device)(unsafe.Pointer(prevDevicePtr + sizeofPtr))
 		device = *devicePtr
+
+		
 	}
 	if ctx == nil {
 		return nil, fmt.Errorf("failed to open device %s", name)
 	}
+
 	return &rdmaContext{
-		Name: name,
+		Name: bufName,
 		ctx:  ctx,
 		Port: port,
 		Guid: guid,
 		portAttr: portAttr,
+		gid: gid,
 	}, nil
 }
 
