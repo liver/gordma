@@ -1,14 +1,10 @@
-//go:build linux
-// +build linux
-
-package ibverbs
+package gordma
 
 //#include <infiniband/verbs.h>
 import "C"
 import (
 	"encoding/binary"
 	"errors"
-	"gordma/common"
 	"log"
 	"math/rand"
 	"time"
@@ -87,7 +83,7 @@ func (q *QueuePair) Close() error {
 
 func (q *QueuePair) modify(attr *C.struct_ibv_qp_attr, mask int) error {
 	errno := C.ibv_modify_qp(q.qp, attr, C.int(mask))
-	return common.NewErrorOrNil("ibv_modify_qp", int32(int32(errno)))
+	return NewErrorOrNil("ibv_modify_qp", int32(int32(errno)))
 }
 
 func (q *QueuePair) Init() error {
@@ -185,7 +181,7 @@ func (q *QueuePair) PostSendImm(wr *sendWorkRequest, imm uint32) error {
 	wr.sendWr.wr_id = wr.createWrId()
 	var bad *C.struct_ibv_send_wr
 	errno := C.ibv_post_send(q.qp, wr.sendWr, &bad)
-	return common.NewErrorOrNil("ibv_post_send", int32(errno))
+	return NewErrorOrNil("ibv_post_send", int32(errno))
 }
 
 func (q *QueuePair) PostReceive(wr *receiveWorkRequest) error {
@@ -202,7 +198,7 @@ func (q *QueuePair) PostReceive(wr *receiveWorkRequest) error {
 	sge.lkey = wr.mr.mr.lkey
 	wr.recvWr.wr_id = wr.createWrId()
 	errno := C.ibv_post_recv(q.qp, wr.recvWr, &bad)
-	return common.NewErrorOrNil("ibv_post_recv", int32(errno))
+	return NewErrorOrNil("ibv_post_recv", int32(errno))
 }
 
 func (q *QueuePair) PostWrite(wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error {
@@ -233,7 +229,7 @@ func (q *QueuePair) PostWriteImm(wr *sendWorkRequest, remoteAddr uint64, rkey ui
 	binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], rkey)
 
 	errno := C.ibv_post_send(q.qp, wr.sendWr, &bad)
-	return common.NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
+	return NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
 }
 
 func (q *QueuePair) PostRead(wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error {
@@ -252,7 +248,7 @@ func (q *QueuePair) PostRead(wr *sendWorkRequest, remoteAddr uint64, rkey uint32
 	wr.sendWr.wr_id = wr.createWrId()
 
 	errno := C.ibv_post_send(q.qp, wr.sendWr, &bad)
-	return common.NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
+	return NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
 }
 
 // This approach ensures reliable execution of RDMA operations by tracking their status through CQ.

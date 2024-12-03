@@ -1,5 +1,5 @@
-package common
-import "C"
+package gordma
+
 import (
 	"errors"
 	"os"

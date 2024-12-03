@@ -3,27 +3,28 @@ package main
 import (
 	"flag"
 	"fmt"
-	"gordma/ibverbs"
+
+	"github.com/liver/gordma"
 )
 
 func main() {
-	c, err := ibverbs.NewRdmaContext("", 1, 0, ibverbs.IBV_MTU_4096)
+	c, err := gordma.NewRdmaContext("", 1, 0, gordma.IBV_MTU_4096)
 	if err != nil {
 		panic(err)
 	}
-	pd, err := ibverbs.NewProtectDomain(c)
+	pd, err := gordma.NewProtectDomain(c)
 	if err != nil {
 		panic(err)
 	}
-	mr, err := ibverbs.NewMemoryRegion(pd, 4096)
+	mr, err := gordma.NewMemoryRegion(pd, 4096)
 	if err != nil {
 		panic(err)
 	}
-	cq, err := ibverbs.NewCompletionQueue(c, 10)
+	cq, err := gordma.NewCompletionQueue(c, 10)
 	if err != nil {
 		panic(err)
 	}
-	qp, err := ibverbs.NewQueuePair(c, pd, cq)
+	qp, err := gordma.NewQueuePair(c, pd, cq)
 	if err != nil {
 		panic(err)
 	}
@@ -35,12 +36,12 @@ func main() {
 	port := 8008
 
 	if *isServer {
-		err := ibverbs.ConnectQpServer(c, qp, mr, port)
+		err := gordma.ConnectQpServer(c, qp, mr, port)
 		if err != nil {
 			panic(err)
 		}
 	} else {
-		err := ibverbs.ConnectQpClient(c, qp, mr, server, port)
+		err := gordma.ConnectQpClient(c, qp, mr, server, port)
 		if err != nil {
 			panic(err)
 		}
@@ -65,8 +66,8 @@ func main() {
 	c.Close()
 }
 
-func runServer(qp *ibverbs.QueuePair, mr *ibverbs.MemoryRegion) error {
-	wr := ibverbs.NewSendWorkRequest(mr)
+func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
+	wr := gordma.NewSendWorkRequest(mr)
 	localData := mr.Buffer()
 	(*localData)[0] = 1
     (*localData)[1] = 2
@@ -75,14 +76,14 @@ func runServer(qp *ibverbs.QueuePair, mr *ibverbs.MemoryRegion) error {
 		return fmt.Errorf("PostWrite failed: %v\n", err)
 	}
 
-	rw := ibverbs.NewReceiveWorkRequest(mr)
-	if err := ibverbs.WaitForCompletion(qp.CQ()); err != nil {
+	rw := gordma.NewReceiveWorkRequest(mr)
+	if err := gordma.WaitForCompletion(qp.CQ()); err != nil {
 		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
 	}
 	if err := qp.PostReceive(rw); err != nil {
 		return fmt.Errorf("PostReceive failed: %v\n", err)
 	}
-	if err := ibverbs.WaitForCompletion(qp.CQ()); err != nil {
+	if err := gordma.WaitForCompletion(qp.CQ()); err != nil {
 		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
     }
 	fmt.Printf("from client: %d%d%d\n", (*mr.Buffer())[0], (*mr.Buffer())[1], (*mr.Buffer())[2])
@@ -90,17 +91,17 @@ func runServer(qp *ibverbs.QueuePair, mr *ibverbs.MemoryRegion) error {
 	return nil
 }
 
-func runClient(qp *ibverbs.QueuePair, mr *ibverbs.MemoryRegion) error {
-	rwr := ibverbs.NewSendWorkRequest(mr)
+func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
+	rwr := gordma.NewSendWorkRequest(mr)
 	if err := qp.PostRead(rwr, mr.RemoteAddr(), mr.RemoteKey()); err != nil {
 		return fmt.Errorf("PostRead failed: %v\n", err)
 	}
-	if err := ibverbs.WaitForCompletion(qp.CQ()); err != nil {
+	if err := gordma.WaitForCompletion(qp.CQ()); err != nil {
 		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
     }
 	fmt.Printf("from server: %d%d%d\n", (*mr.Buffer())[0], (*mr.Buffer())[1], (*mr.Buffer())[2])
 
-	swr := ibverbs.NewSendWorkRequest(mr)
+	swr := gordma.NewSendWorkRequest(mr)
 	localData := mr.Buffer()
 	(*localData)[0] = 4
     (*localData)[1] = 5
@@ -109,7 +110,7 @@ func runClient(qp *ibverbs.QueuePair, mr *ibverbs.MemoryRegion) error {
 	if err := qp.PostSend(swr); err != nil {
 		return fmt.Errorf("PostSend failed: %v\n", err)
 	}
-	if err := ibverbs.WaitForCompletion(qp.CQ()); err != nil {
+	if err := gordma.WaitForCompletion(qp.CQ()); err != nil {
 		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
     }
 	

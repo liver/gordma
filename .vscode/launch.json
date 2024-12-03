@@ -9,7 +9,7 @@
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "main.go",
+            "program": "${workspaceFolder}/cmd/main.go",
             "args": ["-s=true"],
             "console": "integratedTerminal",
         },
@@ -18,7 +18,7 @@
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "main.go",
+            "program": "${workspaceFolder}/cmd/main.go",
             "args": ["-s=false"],
             "console": "integratedTerminal",
         }

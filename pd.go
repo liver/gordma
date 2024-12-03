@@ -1,6 +1,4 @@
-// +build linux
-
-package ibverbs
+package gordma
 
 //#include <infiniband/verbs.h>
 import "C"

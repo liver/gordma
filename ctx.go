@@ -1,6 +1,4 @@
-// +build linux
-
-package ibverbs
+package gordma
 
 //#include <infiniband/verbs.h>
 //#cgo linux LDFLAGS: -libverbs
@@ -94,8 +92,6 @@ func NewRdmaContext(name string, port, index int, ibv_mtu int) (*rdmaContext, er
 		sizeofPtr := unsafe.Sizeof(devicePtr)
 		devicePtr = (**C.struct_ibv_device)(unsafe.Pointer(prevDevicePtr + sizeofPtr))
 		device = *devicePtr
-
-		
 	}
 	if ctx == nil {
 		return nil, fmt.Errorf("failed to open device %s", name)

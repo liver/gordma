@@ -1,7 +1,4 @@
-//go:build linux
-// +build linux
-
-package ibverbs
+package gordma
 
 /*
 #include <infiniband/verbs.h>
