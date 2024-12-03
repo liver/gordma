@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	c, err := ibverbs.NewRdmaContext("", 1, 0)
+	c, err := ibverbs.NewRdmaContext("", 1, 0, ibverbs.IBV_MTU_4096)
 	if err != nil {
 		panic(err)
 	}

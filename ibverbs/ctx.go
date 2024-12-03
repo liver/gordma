@@ -15,12 +15,13 @@ import (
 )
 
 type rdmaContext struct {
-	Name    string
-	Port    int
-	Guid    net.HardwareAddr
-	ctx     *C.struct_ibv_context
+	Name     string
+	Port     int
+	Guid     net.HardwareAddr
+	ctx      *C.struct_ibv_context
 	portAttr C.struct_ibv_port_attr
 	gid      C.union_ibv_gid
+	IBV_MTU  int
 }
 
 type rlimir struct {
@@ -47,7 +48,7 @@ func CCharArrayToString(cArray [64]C.char) string {
     return C.GoStringN((*C.char)(unsafe.Pointer(&cArray[0])), C.int(n))
 }
 
-func NewRdmaContext(name string, port, index int) (*rdmaContext, error) {
+func NewRdmaContext(name string, port, index int, ibv_mtu int) (*rdmaContext, error) {
 	var count C.int
 	var ctx *C.struct_ibv_context
 	var guid net.HardwareAddr
@@ -101,12 +102,13 @@ func NewRdmaContext(name string, port, index int) (*rdmaContext, error) {
 	}
 
 	return &rdmaContext{
-		Name: bufName,
-		ctx:  ctx,
-		Port: port,
-		Guid: guid,
+		Name:     bufName,
+		ctx:      ctx,
+		Port:     port,
+		Guid:     guid,
 		portAttr: portAttr,
-		gid: gid,
+		gid:      gid,
+		IBV_MTU:  ibv_mtu,
 	}, nil
 }
 

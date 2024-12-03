@@ -105,7 +105,7 @@ func (q *QueuePair) Init() error {
 func (q *QueuePair) Ready2Receive(ctx *rdmaContext, destGid uint16, destQpn, destPsn uint32) error {
 	attr := C.struct_ibv_qp_attr{}
 	attr.qp_state = C.IBV_QPS_RTR
-	attr.path_mtu = C.IBV_MTU_1024 // TODO(rdma): проверить
+	attr.path_mtu = uint32(ctx.IBV_MTU)
 	attr.dest_qp_num = C.uint32_t(destQpn)
 	attr.rq_psn = C.uint32_t(destPsn)
 	// this must be > 0 to avoid IBV_WC_REM_INV_REQ_ERR
@@ -121,7 +121,7 @@ func (q *QueuePair) Ready2Receive(ctx *rdmaContext, destGid uint16, destQpn, des
 	mask := C.IBV_QP_STATE | C.IBV_QP_AV | C.IBV_QP_PATH_MTU | C.IBV_QP_DEST_QPN |
 		    C.IBV_QP_RQ_PSN | C.IBV_QP_MAX_DEST_RD_ATOMIC | C.IBV_QP_MIN_RNR_TIMER
 	
-	// TODO: проверить
+	// for Soft-RoCE (aka RXE)
 	attr.ah_attr.is_global = 1
 	attr.ah_attr.grh.dgid = ctx.gid
 	attr.ah_attr.grh.flow_label = 0;
@@ -255,13 +255,13 @@ func (q *QueuePair) PostRead(wr *sendWorkRequest, remoteAddr uint64, rkey uint32
 	return common.NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
 }
 
-// Этот подход обеспечивает надежное выполнение операций RDMA, отслеживая их статус через CQ.
+// This approach ensures reliable execution of RDMA operations by tracking their status through CQ.
 func PerformWriteWithWait(qp *QueuePair, wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error {
-    // Пишем данные в удалённую память
+    // Writing data to remote memory
     if err := qp.PostWrite(wr, remoteAddr, rkey); err != nil {
         return err
     }
 
-    // Ожидаем завершения операции
+    // We are waiting for the operation to complete.
     return WaitForCompletion(qp.cq)
 }

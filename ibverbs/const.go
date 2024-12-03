@@ -6,6 +6,15 @@ package ibverbs
 import "C"
 import "errors"
 
+// MTU flag
+const (
+	IBV_MTU_256  = C.IBV_MTU_256
+	IBV_MTU_512  = C.IBV_MTU_512
+	IBV_MTU_1024 = C.IBV_MTU_1024
+	IBV_MTU_2048 = C.IBV_MTU_2048
+	IBV_MTU_4096 = C.IBV_MTU_4096
+)
+
 // access flag
 const (
 	IBV_ACCESS_LOCAL_WRITE   = C.IBV_ACCESS_LOCAL_WRITE
