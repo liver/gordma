@@ -36,7 +36,6 @@ func NewQueuePair(ctx *rdmaContext, pd *protectDomain, cq *completionQueue) (*Qu
 	qpC, err := C.ibv_create_qp(pd.pd, &initAttr)
 	if qpC == nil {
 		if err != nil {
-			log.Println("qp", err)
 			return nil, err
 		}
 		return nil, errors.New("qp: unknown error")
