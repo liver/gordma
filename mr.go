@@ -15,12 +15,12 @@ import (
 )
 
 type MemoryRegion struct {
-	remoteKey  uint32
-	remoteAddr uint64
 	PD         *protectDomain
 	mr         *C.struct_ibv_mr
 	buf        uintptr // link to buffer
 	bufSize    int // buffer length
+	remoteKey  uint32
+	remoteAddr uint64
 }
 
 func NewMemoryRegion(pd *protectDomain, size int) (*MemoryRegion, error) {
@@ -38,11 +38,12 @@ func NewMemoryRegion(pd *protectDomain, size int) (*MemoryRegion, error) {
 		return nil, errors.New("ibv_reg_mr: failed to reg mr")
 	}
 	mr := &MemoryRegion{
-		PD:        pd,
-		mr:        mrC,
-		remoteKey: uint32(mrC.rkey),
-		buf:       uintptr(unsafe.Pointer(&buf[0])),
-		bufSize:   size,
+		PD:         pd,
+		mr:         mrC,
+		buf:        uintptr(unsafe.Pointer(&buf[0])),
+		bufSize:    size,
+		remoteKey:  uint32(mrC.rkey),
+		remoteAddr: uint64(uintptr(unsafe.Pointer(&buf[0]))),
 	}
 	runtime.SetFinalizer(mr, (*MemoryRegion).finalize)
 	return mr, nil
@@ -74,9 +75,9 @@ func (m *MemoryRegion) LocalKey() uint32 {
 
 func (m *MemoryRegion) String() string {
 	return fmt.Sprintf(
-		"memoryRegion@%d(0x%x)[%d]",
-		uintptr(unsafe.Pointer(&(*m.Buffer())[0])),
-		uintptr(unsafe.Pointer(&(*m.Buffer())[0])),
+		"MemoryRegion RemoteAddr:%d RemoteKey:%d len:%d",
+		m.RemoteAddr(),
+		m.RemoteKey(),
 		len(*m.Buffer()))
 }
 

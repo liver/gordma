@@ -7,6 +7,7 @@ package gordma
 import "C"
 import (
 	"errors"
+	"fmt"
 	"unsafe"
 )
 
@@ -50,8 +51,22 @@ func (s *sendWorkRequest) createWrId() C.uint64_t {
 	return C.uint64_t(uintptr(unsafe.Pointer(&(s.sendWr))))
 }
 
+func (wr *sendWorkRequest) String() string {
+	return fmt.Sprintf(
+		"WR: \n addr: %d\n key: %d\n",
+		wr.mr.RemoteAddr(),
+		wr.mr.RemoteKey())
+}
+
 func (r *receiveWorkRequest) createWrId() C.uint64_t {
 	return C.uint64_t(uintptr(unsafe.Pointer(&(r.recvWr))))
+}
+
+func (wr *receiveWorkRequest) String() string {
+	return fmt.Sprintf(
+		"WR: \n addr: %d\n key: %d\n",
+		wr.mr.RemoteAddr(),
+		wr.mr.RemoteKey())
 }
 
 func allocateAligned(size, alignment int) (unsafe.Pointer, error) {

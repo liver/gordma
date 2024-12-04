@@ -140,7 +140,7 @@ func (c *rdmaContext) Close() error {
 
 func (c *rdmaContext) String() string {
 	return fmt.Sprintf(
-		"rdmaContext: \n name: %s\n port: %d index: %d\n guid: %s\n ",
+		"rdmaContext: \n name: %s\n port: %d index: %d\n guid: %s\n",
 		c.Name,
 		c.Port,
 		c.PortIndex,
