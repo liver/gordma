@@ -166,12 +166,11 @@ func (q *QueuePair) PostSendImm(wr *sendWorkRequest, imm uint32) error {
 	}
 
 	if wr.mr != nil {
-		var sge C.struct_ibv_sge
-		wr.sendWr.sg_list = &sge
+		wr.sge.addr = C.uint64_t(uintptr(wr.mr.mr.addr))
+		wr.sge.length = C.uint32_t(wr.mr.mr.length)
+		wr.sge.lkey = wr.mr.mr.lkey
+		wr.sendWr.sg_list = wr.sge
 		wr.sendWr.num_sge = 1
-		sge.addr = C.uint64_t(uintptr(wr.mr.mr.addr))
-		sge.length = C.uint32_t(wr.mr.mr.length)
-		sge.lkey = wr.mr.mr.lkey
 	} else {
 		// send inline if there is no memory region to send
 		wr.sendWr.send_flags = IBV_SEND_INLINE
@@ -187,13 +186,12 @@ func (q *QueuePair) PostReceive(wr *receiveWorkRequest) error {
 		return QPClosedErr
 	}
 
-	var sge C.struct_ibv_sge
 	var bad *C.struct_ibv_recv_wr
-	wr.recvWr.sg_list = &sge
+	wr.sge.addr = C.uint64_t(uintptr(wr.mr.mr.addr))
+	wr.sge.length = C.uint32_t(wr.mr.mr.length)
+	wr.sge.lkey = wr.mr.mr.lkey
+	wr.recvWr.sg_list = wr.sge
 	wr.recvWr.num_sge = 1
-	sge.addr = C.uint64_t(uintptr(wr.mr.mr.addr))
-	sge.length = C.uint32_t(wr.mr.mr.length)
-	sge.lkey = wr.mr.mr.lkey
 	wr.recvWr.wr_id = wr.createWrId()
 	errno := C.ibv_post_recv(q.qp, wr.recvWr, &bad)
 	return NewErrorOrNil("ibv_post_recv", int32(errno))
@@ -213,15 +211,13 @@ func (q *QueuePair) PostWriteImm(wr *sendWorkRequest, remoteAddr uint64, rkey ui
 	// }
 
 	var bad *C.struct_ibv_send_wr
-	var sge C.struct_ibv_sge = C.struct_ibv_sge{
-		addr: C.uint64_t(uintptr(wr.mr.mr.addr)),
-		length: C.uint32_t(wr.mr.mr.length),
-		lkey: wr.mr.mr.lkey,
-	}
 	wr.sendWr.wr_id = wr.createWrId()
 	wr.sendWr.opcode = IBV_WR_RDMA_WRITE
 	wr.sendWr.send_flags = IBV_SEND_SIGNALED
-	wr.sendWr.sg_list = &sge
+	wr.sge.addr = C.uint64_t(uintptr(wr.mr.mr.addr))
+	wr.sge.length = C.uint32_t(wr.mr.mr.length)
+	wr.sge.lkey = wr.mr.mr.lkey
+	wr.sendWr.sg_list = wr.sge
 	wr.sendWr.num_sge = 1
 	binary.LittleEndian.PutUint64(wr.sendWr.wr[:8], remoteAddr)
 	binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], rkey)
@@ -231,15 +227,14 @@ func (q *QueuePair) PostWriteImm(wr *sendWorkRequest, remoteAddr uint64, rkey ui
 }
 
 func (q *QueuePair) PostRead(wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error {
-	var sge C.struct_ibv_sge
 	var bad *C.struct_ibv_send_wr
 	wr.sendWr.opcode = IBV_WR_RDMA_READ
 	wr.sendWr.send_flags = IBV_SEND_SIGNALED
-	wr.sendWr.sg_list = &sge
+	wr.sge.addr = C.uint64_t(uintptr(wr.mr.mr.addr))
+	wr.sge.length = C.uint32_t(wr.mr.mr.length)
+	wr.sge.lkey = wr.mr.mr.lkey
+	wr.sendWr.sg_list = wr.sge
 	wr.sendWr.num_sge = 1
-	sge.addr = C.uint64_t(uintptr(wr.mr.mr.addr))
-	sge.length = C.uint32_t(wr.mr.mr.length)
-	sge.lkey = wr.mr.mr.lkey
 	binary.LittleEndian.PutUint64(wr.sendWr.wr[:8], remoteAddr)
 	binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], rkey)
 
