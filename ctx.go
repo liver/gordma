@@ -13,13 +13,14 @@ import (
 )
 
 type rdmaContext struct {
-	Name     string
-	Port     int
-	Guid     net.HardwareAddr
-	ctx      *C.struct_ibv_context
-	portAttr C.struct_ibv_port_attr
-	gid      C.union_ibv_gid
-	IBV_MTU  int
+	Name      string
+	Port      int
+	PortIndex int
+	Guid      net.HardwareAddr
+	ctx       *C.struct_ibv_context
+	portAttr  C.struct_ibv_port_attr
+	gid       C.union_ibv_gid
+	IBV_MTU   int
 }
 
 type rlimir struct {
@@ -109,13 +110,14 @@ func NewRdmaContext(name string, port, index int, ibv_mtu int) (*rdmaContext, er
 		}
 
 		return &rdmaContext{
-			Name:     bufName,
-			ctx:      ctx,
-			Port:     port,
-			Guid:     guid,
-			portAttr: portAttr,
-			gid:      gid,
-			IBV_MTU:  ibv_mtu,
+			Name:      bufName,
+			ctx:       ctx,
+			Port:      port,
+			PortIndex: index,
+			Guid:      guid,
+			portAttr:  portAttr,
+			gid:       gid,
+			IBV_MTU:   ibv_mtu,
 		}, nil
 	}
 
@@ -137,5 +139,10 @@ func (c *rdmaContext) Close() error {
 }
 
 func (c *rdmaContext) String() string {
-	return fmt.Sprintf("rdmaContext: \n name: %s\n port: %d\n guid: %s\n ", c.Name, c.Port, c.Guid)
+	return fmt.Sprintf(
+		"rdmaContext: \n name: %s\n port: %d index: %d\n guid: %s\n ",
+		c.Name,
+		c.Port,
+		c.PortIndex,
+		c.Guid)
 }
