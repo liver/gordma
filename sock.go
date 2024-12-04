@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"log"
 	"net"
 )
 
@@ -81,7 +80,11 @@ func ConnectQpClient(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion, server s
 
 func ConnectQpServer(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion, port int, portSelection chan int) error {
 	if port <= 0 {
-		port = getFreePort()
+		p, err := getFreePort()
+		if err != nil {
+			return err
+		}
+		port = p
 	}
 
 	if portSelection != nil {
@@ -165,7 +168,7 @@ func modify_qp_to_rts(ctx *rdmaContext, qp *QueuePair, destLid uint16, destQpNum
 	return nil
 }
 
-func getFreePort() int {
+func getFreePort() (int, error) {
 	// Open a listening socket on port 0
 	listener, _ := net.Listen("tcp", ":0")
 	defer func(listener net.Listener) {
@@ -175,9 +178,8 @@ func getFreePort() int {
 	// We receive a port allocated by the operating system
 	addr, ok := listener.Addr().(*net.TCPAddr)
 	if !ok {
-		// Error handling: addr is not *net.TCPAddr
-		log.Fatal("Listener address is not a TCP address")
+		return 0, fmt.Errorf("Listener address is not a TCP address")
 	}
 
-	return addr.Port
+	return addr.Port, nil
 }
