@@ -21,6 +21,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("%s\n", mr)
 	cq, err := gordma.NewCompletionQueue(c, 10)
 	if err != nil {
 		panic(err)
@@ -72,6 +73,7 @@ func main() {
 }
 
 func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
+	fmt.Printf("%s\n", mr)
 	wr := gordma.NewSendWorkRequest(mr)
 	localData := mr.Buffer()
 	(*localData)[0] = 1
@@ -97,6 +99,7 @@ func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 }
 
 func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
+	fmt.Printf("%s\n", mr)
 	rwr := gordma.NewSendWorkRequest(mr)
 	if err := qp.PostRead(rwr, mr.RemoteAddr(), mr.RemoteKey()); err != nil {
 		return fmt.Errorf("PostRead failed: %v\n", err)
