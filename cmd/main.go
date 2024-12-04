@@ -36,7 +36,7 @@ func main() {
 	port := 8008
 
 	if *isServer {
-		err := gordma.ConnectQpServer(c, qp, mr, port)
+		_, err := gordma.ConnectQpServer(c, qp, mr, port)
 		if err != nil {
 			panic(err)
 		}

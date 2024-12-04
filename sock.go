@@ -79,47 +79,47 @@ func ConnectQpClient(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion, server s
 
 }
 
-func ConnectQpServer(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion, port int) error {
+func ConnectQpServer(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion, port int) (int, error) {
 	if port <= 0 {
 		port = getFreePort()
 	}
 
 	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	c, err := l.Accept()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if c == nil {
-		return err
+		return 0, err
 	}
 	defer c.Close()
 
 	buf := make([]byte, 64)
 	cnt, err := c.Read(buf)
 	if err != nil || cnt == 0 {
-		return err
+		return 0, err
 	}
 
 	remoteQpInfo := qpInfo{}
 	bufNew := bytes.NewBuffer(buf)
 	err = binary.Read(bufNew, binary.BigEndian, &remoteQpInfo)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	bufNew = &bytes.Buffer{}
 	localQpInfo := qpInfo{Lid: uint16(ctx.portAttr.lid), QpNum: qp.Qpn(), Psn: qp.Psn(), Rkey: mr.RemoteKey(), Raddr: uint64(uintptr(mr.mr.addr))}
 	err = binary.Write(bufNew, binary.BigEndian, localQpInfo)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	_, err = c.Write(bufNew.Bytes())
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	mr.remoteAddr = remoteQpInfo.Raddr
@@ -127,20 +127,20 @@ func ConnectQpServer(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion, port int
 
 	err = modify_qp_to_rts(ctx, qp, remoteQpInfo.Lid, remoteQpInfo.QpNum, remoteQpInfo.Psn)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	/* sync with clients */
 	_, err = c.Read(buf)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	_, err = c.Write([]byte(SockSyncMsg))
 	if err != nil {
-		return err
+		return 0, err
 	}
 
-	return nil
+	return port, nil
 }
 
 func modify_qp_to_rts(ctx *rdmaContext, qp *QueuePair, destLid uint16, destQpNum uint32, destPsn uint32) error {
