@@ -12,6 +12,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Printf("%s\n", c)
 	pd, err := gordma.NewProtectDomain(c)
 	if err != nil {
 		panic(err)

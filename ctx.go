@@ -60,52 +60,71 @@ func NewRdmaContext(name string, port, index int, ibv_mtu int) (*rdmaContext, er
 	if deviceList == nil || count == 0 {
 		return nil, errors.New("failed to get devices list")
 	}
-
 	defer C.ibv_free_device_list(deviceList)
+
 	devicePtr := deviceList
-	device := *devicePtr
-	bufName := name
-	for device != nil && ctx == nil {
-		bufName = CCharArrayToString(device.name)
-		// If a device name is specified, we check the name match
+	for i := 0; i < int(count); i++ {
+		device := *devicePtr
+		bufName := CCharArrayToString(device.name)
+
+		// Check device name if specified
 		if name != "" && bufName != name {
+			devicePtr = nextDevice(devicePtr)
 			continue
 		}
 
+		// Open device
 		ctx = C.ibv_open_device(device)
+		if ctx == nil {
+			devicePtr = nextDevice(devicePtr)
+			continue
+		}
+
 		portC := C.uint8_t(port)
 		indexC := C.int(index)
-		
+
+		// Query GID
 		errno, err := C.ibv_query_gid(ctx, portC, indexC, &gid)
 		if errno != 0 || err != nil {
-			return nil, err
+			C.ibv_close_device(ctx)
+			devicePtr = nextDevice(devicePtr)
+			continue
 		}
 		guid = net.HardwareAddr(gid[8:])
 
+		// Query port attributes
 		errno, err = C.___ibv_query_port(ctx, portC, &portAttr)
 		if errno != 0 || err != nil {
-			return nil, err
+			C.ibv_close_device(ctx)
+			devicePtr = nextDevice(devicePtr)
+			continue
 		}
-		
-		// next device
-		prevDevicePtr := uintptr(unsafe.Pointer(devicePtr))
-		sizeofPtr := unsafe.Sizeof(devicePtr)
-		devicePtr = (**C.struct_ibv_device)(unsafe.Pointer(prevDevicePtr + sizeofPtr))
-		device = *devicePtr
-	}
-	if ctx == nil {
-		return nil, fmt.Errorf("failed to open device %s", name)
+
+		// Check if the port state is PORT_ACTIVE
+		if portAttr.state != C.IBV_PORT_ACTIVE {
+			fmt.Printf("Skipping port %d on device %s: not active\n", port, bufName)
+			C.ibv_close_device(ctx)
+			devicePtr = nextDevice(devicePtr)
+			continue
+		}
+
+		return &rdmaContext{
+			Name:     bufName,
+			ctx:      ctx,
+			Port:     port,
+			Guid:     guid,
+			portAttr: portAttr,
+			gid:      gid,
+			IBV_MTU:  ibv_mtu,
+		}, nil
 	}
 
-	return &rdmaContext{
-		Name:     bufName,
-		ctx:      ctx,
-		Port:     port,
-		Guid:     guid,
-		portAttr: portAttr,
-		gid:      gid,
-		IBV_MTU:  ibv_mtu,
-	}, nil
+	return nil, fmt.Errorf("no active InfiniBand ports found on device %s", name)
+}
+
+// Move to the next device
+func nextDevice(devicePtr **C.struct_ibv_device) **C.struct_ibv_device {
+	return (**C.struct_ibv_device)(unsafe.Pointer(uintptr(unsafe.Pointer(devicePtr)) + unsafe.Sizeof(devicePtr)))
 }
 
 func (c *rdmaContext) Close() error {

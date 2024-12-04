@@ -37,4 +37,9 @@ const (
 	IBV_SEND_INLINE   = C.IBV_SEND_INLINE
 )
 
+// interface states
+const (
+	IBV_PORT_ACTIVE = C.IBV_PORT_ACTIVE
+)
+
 var QPClosedErr = errors.New("qp already closed")
