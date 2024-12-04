@@ -86,7 +86,7 @@ func WaitForCompletion(cq *C.struct_ibv_cq) error {
 
         // Checking the completion status
         if wc.status != C.IBV_WC_SUCCESS {
-            return fmt.Errorf("work completion failed: %d", wc.status)
+            return fmt.Errorf("work completion failed with status:%d wr_id:%d", wc.status, wc.wr_id)
         }
 
         return nil
