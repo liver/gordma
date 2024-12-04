@@ -36,7 +36,11 @@ func main() {
 	port := 8008
 
 	if *isServer {
-		_, err := gordma.ConnectQpServer(c, qp, mr, port)
+		portSelection := make(chan int, 1)
+		go func (p chan int)  {
+			fmt.Printf("rdma server port: %d\n", <-p)
+		}(portSelection)
+		err := gordma.ConnectQpServer(c, qp, mr, port, portSelection)
 		if err != nil {
 			panic(err)
 		}
