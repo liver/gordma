@@ -7,9 +7,11 @@ import "C"
 import (
 	"errors"
 	"fmt"
-	"golang.org/x/sys/unix"
 	"net"
+	"strings"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 type rdmaContext struct {
@@ -139,10 +141,20 @@ func (c *rdmaContext) Close() error {
 }
 
 func (c *rdmaContext) String() string {
+	var builder strings.Builder
+	for i, b := range c.gid {
+		if i > 0 {
+			builder.WriteString(":")
+		}
+		builder.WriteString(fmt.Sprintf("%02x", b))
+	}
+	
 	return fmt.Sprintf(
-		"rdmaContext: \n name: %s\n port: %d index: %d\n guid: %s\n",
+		"rdmaContext: \n name: %s\n port: %d index: %d\n  mtu: %d\n guid: %s\n  gid: %s\n",
 		c.Name,
 		c.Port,
 		c.PortIndex,
-		c.Guid)
+		c.IBV_MTU,
+		c.Guid,
+		builder.String())
 }

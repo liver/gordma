@@ -19,8 +19,7 @@ type MemoryRegion struct {
 	mr         *C.struct_ibv_mr
 	buf        uintptr // link to buffer
 	bufSize    int // buffer length
-	remoteKey  uint32
-	remoteAddr uint64
+	qp         qpInfo
 }
 
 func NewMemoryRegion(pd *protectDomain, size int) (*MemoryRegion, error) {
@@ -42,8 +41,10 @@ func NewMemoryRegion(pd *protectDomain, size int) (*MemoryRegion, error) {
 		mr:         mrC,
 		buf:        uintptr(unsafe.Pointer(&buf[0])),
 		bufSize:    size,
-		remoteKey:  uint32(mrC.rkey),
-		remoteAddr: uint64(uintptr(unsafe.Pointer(&buf[0]))),
+		qp:         qpInfo{
+			Rkey:  uint32(mrC.rkey),
+			Raddr: uint64(uintptr(unsafe.Pointer(&buf[0]))),
+		},
 	}
 	runtime.SetFinalizer(mr, (*MemoryRegion).finalize)
 	return mr, nil
@@ -63,11 +64,11 @@ func (m *MemoryRegion) Buffer() *[]byte {
 }
 
 func (m *MemoryRegion) RemoteKey() uint32 {
-	return m.remoteKey
+	return m.qp.Rkey
 }
 
 func (m *MemoryRegion) RemoteAddr() uint64 {
-	return m.remoteAddr
+	return m.qp.Raddr
 }
 func (m *MemoryRegion) LocalKey() uint32 {
 	return uint32(m.mr.lkey)

@@ -17,6 +17,16 @@ type QueuePair struct {
 	cq   *C.struct_ibv_cq
 }
 
+type qpInfo struct {
+	Lid   uint16
+	Gid   [16]byte
+	QpNum uint32
+	Psn   uint32
+	Rkey  uint32
+	Raddr uint64
+	MTU   uint32
+}
+
 func NewQueuePair(ctx *rdmaContext, pd *protectDomain, cq *completionQueue) (*QueuePair, error) {
 	initAttr := C.struct_ibv_qp_init_attr{}
 	initAttr.send_cq = cq.cq
@@ -96,18 +106,17 @@ func (q *QueuePair) Init() error {
 }
 
 // Ready2Receive RTR
-func (q *QueuePair) Ready2Receive(ctx *rdmaContext, destGid uint16, destQpn, destPsn uint32) error {
+func (q *QueuePair) Ready2Receive(mtu uint32, destGidLocal uint16, destGidGlobal [16]byte, destQpn, destPsn uint32) error {
 	attr := C.struct_ibv_qp_attr{}
 	attr.qp_state = C.IBV_QPS_RTR
-	attr.path_mtu = uint32(ctx.IBV_MTU)
+	attr.path_mtu = mtu
 	attr.dest_qp_num = C.uint32_t(destQpn)
 	attr.rq_psn = C.uint32_t(destPsn)
 	// this must be > 0 to avoid IBV_WC_REM_INV_REQ_ERR
 	attr.max_dest_rd_atomic = 1
 	// Minimum RNR NAK timer (range 0..31)
 	attr.min_rnr_timer = 24
-	attr.ah_attr.is_global = 0
-	attr.ah_attr.dlid = C.uint16_t(destGid)
+	attr.ah_attr.dlid = C.uint16_t(destGidLocal)
 	//  attr.ah_attr.dlid = C.uint16_t(destLid)
 	attr.ah_attr.sl = 0
 	attr.ah_attr.src_path_bits = 0
@@ -117,7 +126,7 @@ func (q *QueuePair) Ready2Receive(ctx *rdmaContext, destGid uint16, destQpn, des
 	
 	// for Soft-RoCE (aka RXE)
 	attr.ah_attr.is_global = 1
-	attr.ah_attr.grh.dgid = ctx.gid
+	attr.ah_attr.grh.dgid = destGidGlobal
 	attr.ah_attr.grh.flow_label = 0;
 	attr.ah_attr.grh.hop_limit = 1;
 	attr.ah_attr.grh.sgid_index = 0;

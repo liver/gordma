@@ -11,14 +11,6 @@ import (
 
 var SockSyncMsg string = "sync"
 
-type qpInfo struct {
-	Lid   uint16
-	QpNum uint32
-	Psn   uint32
-	Rkey  uint32
-	Raddr uint64
-}
-
 func ConnectQpClient(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion, server string, port int) error {
 	if server == "" {
 		server = "localhost"
@@ -37,6 +29,7 @@ func ConnectQpClient(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion, server s
 
 	localQpInfo := qpInfo{
 		Lid:   HostToNetShort(uint16(ctx.portAttr.lid)),
+		Gid:   ctx.gid,
 		QpNum: HostToNetLong(qp.Qpn()),
 		Psn:   HostToNetLong(qp.Psn()),
 		Rkey:  HostToNetLong(mr.RemoteKey()),
@@ -64,18 +57,17 @@ func ConnectQpClient(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion, server s
 		return err
 	}
 
-	remoteQpInfo := qpInfo{
+	mr.qp = qpInfo{
 		Lid:   NetToHostShort(bufQpInfo.Lid),
+		Gid:   bufQpInfo.Gid,
 		QpNum: NetToHostLong(bufQpInfo.QpNum),
 		Psn:   NetToHostLong(bufQpInfo.Psn),
 		Rkey:  NetToHostLong(bufQpInfo.Rkey),
 		Raddr: NetToHostLongLong(bufQpInfo.Raddr),
+		MTU:   NetToHostLong(bufQpInfo.MTU),
 	}
 
-	mr.remoteAddr = remoteQpInfo.Raddr
-	mr.remoteKey = remoteQpInfo.Rkey
-
-	err = modify_qp_to_rts(ctx, qp, remoteQpInfo.Lid, remoteQpInfo.QpNum, remoteQpInfo.Psn)
+	err = modify_qp_to_rts(qp, mr.qp.MTU, mr.qp.Lid, mr.qp.Gid, mr.qp.QpNum, mr.qp.Psn)
 	if err != nil {
 		return err
 	}
@@ -137,10 +129,12 @@ func ConnectQpServer(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion, port int
 	bufNew = &bytes.Buffer{}
 	localQpInfo := qpInfo{
 		Lid:   HostToNetShort(uint16(ctx.portAttr.lid)),
+		Gid:   ctx.gid,
 		QpNum: HostToNetLong(qp.Qpn()),
 		Psn:   HostToNetLong(qp.Psn()),
 		Rkey:  HostToNetLong(mr.RemoteKey()),
 		Raddr: HostToNetLongLong(mr.RemoteAddr()),
+		MTU:   HostToNetLong(uint32(ctx.IBV_MTU)),
 	}
 	err = binary.Write(bufNew, binary.BigEndian, localQpInfo)
 	if err != nil {
@@ -151,18 +145,17 @@ func ConnectQpServer(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion, port int
 		return err
 	}
 
-	remoteQpInfo := qpInfo{
+	mr.qp = qpInfo{
 		Lid:   NetToHostShort(bufQpInfo.Lid),
+		Gid:   bufQpInfo.Gid,
 		QpNum: NetToHostLong(bufQpInfo.QpNum),
 		Psn:   NetToHostLong(bufQpInfo.Psn),
 		Rkey:  NetToHostLong(bufQpInfo.Rkey),
 		Raddr: NetToHostLongLong(bufQpInfo.Raddr),
+		MTU:   uint32(ctx.IBV_MTU),
 	}
 
-	mr.remoteAddr = remoteQpInfo.Raddr
-	mr.remoteKey = remoteQpInfo.Rkey
-
-	err = modify_qp_to_rts(ctx, qp, remoteQpInfo.Lid, remoteQpInfo.QpNum, remoteQpInfo.Psn)
+	err = modify_qp_to_rts(qp, mr.qp.MTU, mr.qp.Lid, mr.qp.Gid, mr.qp.QpNum, mr.qp.Psn)
 	if err != nil {
 		return err
 	}
@@ -180,13 +173,13 @@ func ConnectQpServer(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion, port int
 	return nil
 }
 
-func modify_qp_to_rts(ctx *rdmaContext, qp *QueuePair, destLid uint16, destQpNum uint32, destPsn uint32) error {
+func modify_qp_to_rts(qp *QueuePair, mtu uint32, destLid uint16, destGid [16]byte, destQpNum uint32, destPsn uint32) error {
 	err := qp.Init()
 	if err != nil {
 		return err
 	}
 
-	err = qp.Ready2Receive(ctx, destLid, destQpNum, destPsn)
+	err = qp.Ready2Receive(mtu, destLid, destGid, destQpNum, destPsn)
 	if err != nil {
 		return err
 	}
