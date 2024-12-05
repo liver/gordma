@@ -9,13 +9,13 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type completionQueue struct {
+type CompletionQueue struct {
 	cqe     int
 	cq      *C.struct_ibv_cq
 	channel *C.struct_ibv_comp_channel
 }
 
-func NewCompletionQueue(ctx *rdmaContext, cqe int) (*completionQueue, error) {
+func NewCompletionQueue(ctx *RdmaContext, cqe int) (*CompletionQueue, error) {
 	compChannel, err := C.ibv_create_comp_channel(ctx.ctx)
 	if err != nil {
 		return nil, err
@@ -34,18 +34,18 @@ func NewCompletionQueue(ctx *rdmaContext, cqe int) (*completionQueue, error) {
 		}
 		return nil, errors.New("unknown error")
 	}
-	return &completionQueue{
+	return &CompletionQueue{
 		cqe:     cqe,
 		cq:      cq,
 		channel: compChannel,
 	}, nil
 }
 
-func (c *completionQueue) Cqe() int {
+func (c *CompletionQueue) Cqe() int {
 	return c.cqe
 }
 
-func (c *completionQueue) Close() error {
+func (c *CompletionQueue) Close() error {
 	channel := c.cq.channel
 	errno := destroyCQ(c.cq)
 	if errno != 0 {

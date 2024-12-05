@@ -27,7 +27,7 @@ type qpInfo struct {
 	MTU   uint32
 }
 
-func NewQueuePair(ctx *rdmaContext, pd *protectDomain, cq *completionQueue) (*QueuePair, error) {
+func NewQueuePair(ctx *RdmaContext, pd *ProtectDomain, cq *CompletionQueue) (*QueuePair, error) {
 	initAttr := C.struct_ibv_qp_init_attr{}
 	initAttr.send_cq = cq.cq
 	initAttr.recv_cq = cq.cq

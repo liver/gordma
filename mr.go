@@ -15,14 +15,14 @@ import (
 )
 
 type MemoryRegion struct {
-	PD         *protectDomain
+	PD         *ProtectDomain
 	mr         *C.struct_ibv_mr
 	buf        uintptr // link to buffer
 	bufSize    int // buffer length
 	qp         qpInfo
 }
 
-func NewMemoryRegion(pd *protectDomain, size int) (*MemoryRegion, error) {
+func NewMemoryRegion(pd *ProtectDomain, size int) (*MemoryRegion, error) {
 	const mrPort = unix.PROT_READ | unix.PROT_WRITE
 	const mrFlags = unix.MAP_PRIVATE | unix.MAP_ANONYMOUS
 	buf, err := unix.Mmap(-1, 0, size, mrPort, mrFlags)

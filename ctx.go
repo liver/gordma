@@ -14,7 +14,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-type rdmaContext struct {
+type RdmaContext struct {
 	Name      string
 	Port      int
 	PortIndex int
@@ -49,7 +49,7 @@ func CCharArrayToString(cArray [64]C.char) string {
     return C.GoStringN((*C.char)(unsafe.Pointer(&cArray[0])), C.int(n))
 }
 
-func NewRdmaContext(name string, port, index int, ibv_mtu int) (*rdmaContext, error) {
+func NewRdmaContext(name string, port, index int, ibv_mtu int) (*RdmaContext, error) {
 	var count C.int
 	var ctx *C.struct_ibv_context
 	var guid net.HardwareAddr
@@ -111,7 +111,7 @@ func NewRdmaContext(name string, port, index int, ibv_mtu int) (*rdmaContext, er
 			continue
 		}
 
-		return &rdmaContext{
+		return &RdmaContext{
 			Name:      bufName,
 			ctx:       ctx,
 			Port:      port,
@@ -131,7 +131,7 @@ func nextDevice(devicePtr **C.struct_ibv_device) **C.struct_ibv_device {
 	return (**C.struct_ibv_device)(unsafe.Pointer(uintptr(unsafe.Pointer(devicePtr)) + unsafe.Sizeof(devicePtr)))
 }
 
-func (c *rdmaContext) Close() error {
+func (c *RdmaContext) Close() error {
 	errno := C.ibv_close_device(c.ctx)
 	if errno != 0 {
 		return errors.New("failed to close device")
@@ -140,7 +140,7 @@ func (c *rdmaContext) Close() error {
 	return nil
 }
 
-func (c *rdmaContext) String() string {
+func (c *RdmaContext) String() string {
 	var builder strings.Builder
 	for i, b := range c.gid {
 		if i > 0 {

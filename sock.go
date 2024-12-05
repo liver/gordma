@@ -11,7 +11,7 @@ import (
 
 var SockSyncMsg string = "sync"
 
-func ConnectQpClient(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion, server string, port int) error {
+func ConnectQpClient(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, server string, port int) error {
 	if server == "" {
 		server = "localhost"
 	}
@@ -86,7 +86,7 @@ func ConnectQpClient(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion, server s
 
 }
 
-func ConnectQpServer(ctx *rdmaContext, qp *QueuePair, mr *MemoryRegion, port int, portSelection chan int) error {
+func ConnectQpServer(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, port int, portSelection chan int) error {
 	if port <= 0 {
 		p, err := getFreePort()
 		if err != nil {
