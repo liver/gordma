@@ -35,7 +35,6 @@ func ConnectQpClient(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, server s
 		Rkey:  HostToNetLong(mr.RemoteKey()),
 		Raddr: HostToNetLongLong(mr.RemoteAddr()),
 	}
-	
 	err = binary.Write(bufNew, binary.BigEndian, localQpInfo)
 	if err != nil {
 		return err
@@ -147,7 +146,7 @@ func ConnectQpServer(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, port int
 
 	mr.qp = qpInfo{
 		Lid:   NetToHostShort(bufQpInfo.Lid),
-		Gid:   bufQpInfo.Gid,
+		Gid:   localQpInfo.Gid,
 		QpNum: NetToHostLong(bufQpInfo.QpNum),
 		Psn:   NetToHostLong(bufQpInfo.Psn),
 		Rkey:  NetToHostLong(bufQpInfo.Rkey),

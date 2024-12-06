@@ -129,7 +129,6 @@ func (q *QueuePair) Ready2Receive(mtu uint32, destGidLocal uint16, destGidGlobal
 	attr.ah_attr.grh.dgid = destGidGlobal
 	attr.ah_attr.grh.flow_label = 0;
 	attr.ah_attr.grh.hop_limit = 1;
-	attr.ah_attr.grh.sgid_index = 0;
 	attr.ah_attr.grh.sgid_index = C.uint8_t(0)
 	attr.ah_attr.grh.traffic_class = 0;
 	//
@@ -180,12 +179,14 @@ func (q *QueuePair) PostSendImm(wr *sendWorkRequest, imm uint32) error {
 		wr.sge.lkey = wr.mr.mr.lkey
 		wr.sendWr.sg_list = wr.sge
 		wr.sendWr.num_sge = 1
+		wr.sendWr.next = nil
 	} else {
 		// send inline if there is no memory region to send
 		wr.sendWr.send_flags = IBV_SEND_INLINE
 	}
 	wr.sendWr.wr_id = wr.createWrId()
 	var bad *C.struct_ibv_send_wr
+
 	errno := C.ibv_post_send(q.qp, wr.sendWr, &bad)
 	return NewErrorOrNil("ibv_post_send", int32(errno))
 }
@@ -201,7 +202,9 @@ func (q *QueuePair) PostReceive(wr *receiveWorkRequest) error {
 	wr.sge.lkey = wr.mr.mr.lkey
 	wr.recvWr.sg_list = wr.sge
 	wr.recvWr.num_sge = 1
+	wr.recvWr.next = nil
 	wr.recvWr.wr_id = wr.createWrId()
+
 	errno := C.ibv_post_recv(q.qp, wr.recvWr, &bad)
 	return NewErrorOrNil("ibv_post_recv", int32(errno))
 }
@@ -228,6 +231,7 @@ func (q *QueuePair) PostWriteImm(wr *sendWorkRequest, remoteAddr uint64, rkey ui
 	wr.sge.lkey = wr.mr.mr.lkey
 	wr.sendWr.sg_list = wr.sge
 	wr.sendWr.num_sge = 1
+	wr.sendWr.next = nil
 	binary.LittleEndian.PutUint64(wr.sendWr.wr[:8], remoteAddr)
 	binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], rkey)
 
@@ -244,6 +248,7 @@ func (q *QueuePair) PostRead(wr *sendWorkRequest, remoteAddr uint64, rkey uint32
 	wr.sge.lkey = wr.mr.mr.lkey
 	wr.sendWr.sg_list = wr.sge
 	wr.sendWr.num_sge = 1
+	wr.sendWr.next = nil
 	binary.LittleEndian.PutUint64(wr.sendWr.wr[:8], remoteAddr)
 	binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], rkey)
 

@@ -46,6 +46,7 @@ func NewMemoryRegion(pd *ProtectDomain, size int) (*MemoryRegion, error) {
 			Raddr: uint64(uintptr(unsafe.Pointer(&buf[0]))),
 		},
 	}
+
 	runtime.SetFinalizer(mr, (*MemoryRegion).finalize)
 	return mr, nil
 }
@@ -76,8 +77,9 @@ func (m *MemoryRegion) LocalKey() uint32 {
 
 func (m *MemoryRegion) String() string {
 	return fmt.Sprintf(
-		"MemoryRegion RemoteAddr:%d RemoteKey:%d len:%d",
+		"MemoryRegion RemoteAddr:%d LocalKey:%d RemoteKey:%d len:%d",
 		m.RemoteAddr(),
+		m.mr.lkey,
 		m.RemoteKey(),
 		len(*m.Buffer()))
 }
