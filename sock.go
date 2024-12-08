@@ -146,7 +146,7 @@ func ConnectQpServer(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, port int
 
 	mr.qp = qpInfo{
 		Lid:   NetToHostShort(bufQpInfo.Lid),
-		Gid:   localQpInfo.Gid,
+		Gid:   bufQpInfo.Gid,
 		QpNum: NetToHostLong(bufQpInfo.QpNum),
 		Psn:   NetToHostLong(bufQpInfo.Psn),
 		Rkey:  NetToHostLong(bufQpInfo.Rkey),
