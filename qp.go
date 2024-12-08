@@ -5,16 +5,18 @@ import "C"
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math/rand"
 	"time"
 )
 
 // queuePair QP
 type QueuePair struct {
-	psn  uint32
-	port int
-	qp   *C.struct_ibv_qp
-	cq   *C.struct_ibv_cq
+	psn             uint32
+	port            int
+	qp              *C.struct_ibv_qp
+	cq              *C.struct_ibv_cq
+	CompletionQueue *CompletionQueue
 }
 
 type qpInfo struct {
@@ -53,10 +55,11 @@ func NewQueuePair(ctx *RdmaContext, pd *ProtectDomain, cq *CompletionQueue) (*Qu
 	// create psn
 	psn := rand.New(rand.NewSource(time.Now().UnixNano())).Uint32() & 0xffffff
 	return &QueuePair{
-		psn:  psn,
-		port: ctx.Port,
-		qp:   qpC,
-		cq:   cq.cq,
+		psn:             psn,
+		port:            ctx.Port,
+		qp:              qpC,
+		cq:              cq.cq,
+		CompletionQueue: cq,
 	}, nil
 }
 
@@ -156,6 +159,20 @@ func (q *QueuePair) Ready2Send() error {
 	return q.modify(&attr, mask)
 }
 
+func (q *QueuePair) PostSendWithWait(wr *sendWorkRequest) error {
+	err := q.PostSend(wr)
+	if err != nil {
+		return err
+	}
+
+	_, err = q.CompletionQueue.WaitForCompletion()
+	if err != nil {
+		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
+	}
+
+	return nil
+}
+
 func (q *QueuePair) PostSend(wr *sendWorkRequest) error {
 	return q.PostSendImm(wr, 0)
 }
@@ -174,9 +191,9 @@ func (q *QueuePair) PostSendImm(wr *sendWorkRequest, imm uint32) error {
 	}
 
 	if wr.mr != nil {
-		wr.sge.addr = C.uint64_t(uintptr(wr.mr.mr.addr))
-		wr.sge.length = C.uint32_t(wr.mr.mr.length)
-		wr.sge.lkey = wr.mr.mr.lkey
+		wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrNotice.addr))
+		wr.sge.length = C.uint32_t(wr.mr.mrNotice.length)
+		wr.sge.lkey = wr.mr.mrNotice.lkey
 		wr.sendWr.sg_list = wr.sge
 		wr.sendWr.num_sge = 1
 		wr.sendWr.next = nil
@@ -191,15 +208,29 @@ func (q *QueuePair) PostSendImm(wr *sendWorkRequest, imm uint32) error {
 	return NewErrorOrNil("ibv_post_send", int32(errno))
 }
 
+func (q *QueuePair) PostReceiveWithWait(wr *receiveWorkRequest) error {
+	err := q.PostReceive(wr)
+	if err != nil {
+		return err
+	}
+
+	_, err = q.CompletionQueue.WaitForCompletion()
+	if err != nil {
+		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
+	}
+
+	return nil
+}
+
 func (q *QueuePair) PostReceive(wr *receiveWorkRequest) error {
 	if q.qp == nil {
 		return QPClosedErr
 	}
 
 	var bad *C.struct_ibv_recv_wr
-	wr.sge.addr = C.uint64_t(uintptr(wr.mr.mr.addr))
-	wr.sge.length = C.uint32_t(wr.mr.mr.length)
-	wr.sge.lkey = wr.mr.mr.lkey
+	wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrNotice.addr))
+	wr.sge.length = C.uint32_t(wr.mr.mrNotice.length)
+	wr.sge.lkey = wr.mr.mrNotice.lkey
 	wr.recvWr.sg_list = wr.sge
 	wr.recvWr.num_sge = 1
 	wr.recvWr.next = nil
@@ -207,6 +238,20 @@ func (q *QueuePair) PostReceive(wr *receiveWorkRequest) error {
 
 	errno := C.ibv_post_recv(q.qp, wr.recvWr, &bad)
 	return NewErrorOrNil("ibv_post_recv", int32(errno))
+}
+
+func (q *QueuePair) PostWriteWithWait(wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error {
+	err := q.PostWriteImm(wr, remoteAddr, rkey, 0)
+	if err != nil {
+		return err
+	}
+
+	_, err = q.CompletionQueue.WaitForCompletion()
+	if err != nil {
+		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
+	}
+
+	return nil
 }
 
 func (q *QueuePair) PostWrite(wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error {
@@ -226,9 +271,9 @@ func (q *QueuePair) PostWriteImm(wr *sendWorkRequest, remoteAddr uint64, rkey ui
 	wr.sendWr.wr_id = wr.createWrId()
 	wr.sendWr.opcode = IBV_WR_RDMA_WRITE
 	wr.sendWr.send_flags = IBV_SEND_SIGNALED
-	wr.sge.addr = C.uint64_t(uintptr(wr.mr.mr.addr))
-	wr.sge.length = C.uint32_t(wr.mr.mr.length)
-	wr.sge.lkey = wr.mr.mr.lkey
+	wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrBuf.addr))
+	wr.sge.length = C.uint32_t(wr.mr.mrBuf.length)
+	wr.sge.lkey = wr.mr.mrBuf.lkey
 	wr.sendWr.sg_list = wr.sge
 	wr.sendWr.num_sge = 1
 	wr.sendWr.next = nil
@@ -239,13 +284,27 @@ func (q *QueuePair) PostWriteImm(wr *sendWorkRequest, remoteAddr uint64, rkey ui
 	return NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
 }
 
+func (q *QueuePair) PostReadWithWait(wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error {
+	err := q.PostRead(wr, remoteAddr, rkey)
+	if err != nil {
+		return err
+	}
+
+	_, err = q.CompletionQueue.WaitForCompletion()
+	if err != nil {
+		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
+	}
+
+	return nil
+}
+
 func (q *QueuePair) PostRead(wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error {
 	var bad *C.struct_ibv_send_wr
 	wr.sendWr.opcode = IBV_WR_RDMA_READ
 	wr.sendWr.send_flags = IBV_SEND_SIGNALED
-	wr.sge.addr = C.uint64_t(uintptr(wr.mr.mr.addr))
-	wr.sge.length = C.uint32_t(wr.mr.mr.length)
-	wr.sge.lkey = wr.mr.mr.lkey
+	wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrBuf.addr))
+	wr.sge.length = C.uint32_t(wr.mr.mrBuf.length)
+	wr.sge.lkey = wr.mr.mrBuf.lkey
 	wr.sendWr.sg_list = wr.sge
 	wr.sendWr.num_sge = 1
 	wr.sendWr.next = nil
@@ -256,15 +315,4 @@ func (q *QueuePair) PostRead(wr *sendWorkRequest, remoteAddr uint64, rkey uint32
 
 	errno := C.ibv_post_send(q.qp, wr.sendWr, &bad)
 	return NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
-}
-
-// This approach ensures reliable execution of RDMA operations by tracking their status through CQ.
-func PerformWriteWithWait(qp *QueuePair, wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error {
-    // Writing data to remote memory
-    if err := qp.PostWrite(wr, remoteAddr, rkey); err != nil {
-        return err
-    }
-
-    // We are waiting for the operation to complete.
-    return WaitForCompletion(qp.cq)
 }

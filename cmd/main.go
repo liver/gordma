@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"math/rand"
 
 	"github.com/liver/gordma"
 )
@@ -17,7 +18,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	mr, err := gordma.NewMemoryRegion(pd, 4096)
+	mr, err := gordma.NewMemoryRegion(pd, 4096, 3)
 	if err != nil {
 		panic(err)
 	}
@@ -74,53 +75,58 @@ func main() {
 
 func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	fmt.Printf("%s\n", mr)
+
+	rw := gordma.NewReceiveWorkRequest(mr)
+	if err := qp.PostReceiveWithWait(rw); err != nil {
+		return fmt.Errorf("PostReceive failed: %v\n", err)
+	}
+	fmt.Printf("from client R: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
+
 	wr := gordma.NewSendWorkRequest(mr)
 	localData := mr.Buffer()
-	(*localData)[0] = 1
-    (*localData)[1] = 2
-	(*localData)[2] = 3
-	if err := qp.PostWrite(wr, mr.RemoteAddr(), mr.RemoteKey()); err != nil {
+	(*localData)[0] = byte(rand.Intn(9))
+	(*localData)[1] = byte(rand.Intn(9))
+	(*localData)[2] = byte(rand.Intn(9))
+	(*localData)[3] = byte(rand.Intn(9))
+	(*localData)[4] = byte(rand.Intn(9))
+	fmt.Printf("from server W: %d%d%d%d%d\n", (*mr.Buffer())[0], (*mr.Buffer())[1], (*mr.Buffer())[2], (*mr.Buffer())[3], (*mr.Buffer())[4])
+	if err := qp.PostWriteWithWait(wr, mr.RemoteAddr(), mr.RemoteKey()); err != nil {
 		return fmt.Errorf("PostWrite failed: %v\n", err)
 	}
 
-	rw := gordma.NewReceiveWorkRequest(mr)
-	if err := gordma.WaitForCompletion(qp.CQ()); err != nil {
-		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
+	swr := gordma.NewSendWorkRequest(mr)
+	localNotice := mr.Notice()
+	(*localNotice)[0] = byte(rand.Intn(9))
+	(*localNotice)[1] = byte(rand.Intn(9))
+	(*localNotice)[2] = byte(rand.Intn(9))
+	fmt.Printf("from server S: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
+	if err := qp.PostSendWithWait(swr); err != nil {
+		return fmt.Errorf("PostSend failed: %v\n", err)
 	}
-	if err := qp.PostReceive(rw); err != nil {
-		return fmt.Errorf("PostReceive failed: %v\n", err)
-	}
-	if err := gordma.WaitForCompletion(qp.CQ()); err != nil {
-		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
-    }
-	fmt.Printf("from client: %d%d%d\n", (*mr.Buffer())[0], (*mr.Buffer())[1], (*mr.Buffer())[2])
 
 	return nil
 }
 
 func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	fmt.Printf("%s\n", mr)
-	rwr := gordma.NewSendWorkRequest(mr)
-	if err := qp.PostRead(rwr, mr.RemoteAddr(), mr.RemoteKey()); err != nil {
-		return fmt.Errorf("PostRead failed: %v\n", err)
-	}
-	if err := gordma.WaitForCompletion(qp.CQ()); err != nil {
-		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
-    }
-	fmt.Printf("from server: %d%d%d\n", (*mr.Buffer())[0], (*mr.Buffer())[1], (*mr.Buffer())[2])
 
 	swr := gordma.NewSendWorkRequest(mr)
-	localData := mr.Buffer()
-	(*localData)[0] = 4
-    (*localData)[1] = 5
-	(*localData)[2] = 6
-	fmt.Printf("from client: %d%d%d\n", (*mr.Buffer())[0], (*mr.Buffer())[1], (*mr.Buffer())[2])
-	if err := qp.PostSend(swr); err != nil {
+	localData := mr.Notice()
+	(*localData)[0] = byte(rand.Intn(9))
+	(*localData)[1] = byte(rand.Intn(9))
+	(*localData)[2] = byte(rand.Intn(9))
+	fmt.Printf("from client S: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
+	if err := qp.PostSendWithWait(swr); err != nil {
 		return fmt.Errorf("PostSend failed: %v\n", err)
 	}
-	if err := gordma.WaitForCompletion(qp.CQ()); err != nil {
-		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
-    }
-	
+
+	rw := gordma.NewReceiveWorkRequest(mr)
+	if err := qp.PostReceiveWithWait(rw); err != nil {
+		return fmt.Errorf("PostReceive failed: %v\n", err)
+	}
+	fmt.Printf("from server R: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
+
+	fmt.Printf("from server W: %d%d%d%d%d\n", (*mr.Buffer())[0], (*mr.Buffer())[1], (*mr.Buffer())[2], (*mr.Buffer())[3], (*mr.Buffer())[4])
+
 	return nil
 }

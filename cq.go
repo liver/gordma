@@ -5,6 +5,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -41,8 +42,16 @@ func NewCompletionQueue(ctx *RdmaContext, cqe int) (*CompletionQueue, error) {
 	}, nil
 }
 
+func (c *CompletionQueue) Cq() *C.struct_ibv_cq {
+	return c.cq
+}
+
 func (c *CompletionQueue) Cqe() int {
 	return c.cqe
+}
+
+func (c *CompletionQueue) CompChannel() *C.struct_ibv_comp_channel {
+	return c.channel
 }
 
 func (c *CompletionQueue) Close() error {
@@ -68,27 +77,31 @@ func destroyCompChannel(channel *C.struct_ibv_comp_channel) C.int {
 	return C.ibv_destroy_comp_channel(channel)
 }
 
-func WaitForCompletion(cq *C.struct_ibv_cq) error {
-    var wc C.struct_ibv_wc // structure to store completion information
+func (cq *CompletionQueue) WaitForCompletion() ([]C.struct_ibv_wc, error) {
+    const maxWC = 10 // Maximum Work Completions per call
+    wc := make([]C.struct_ibv_wc, maxWC)
 
-    // Waiting for completion event
     for {
-        // We receive one event from CQ
-        numEvents := C.ibv_poll_cq(cq, 1, &wc)
+        // 1. CQ survey for Work Completion
+        numEvents := C.ibv_poll_cq(cq.cq, C.int(len(wc)), &wc[0])
         if numEvents < 0 {
-            return errors.New("polling CQ failed")
+            return nil, errors.New("polling CQ failed")
         }
 
+        // 2. If there are no events, we wait (blocking mode)
         if numEvents == 0 {
-			// If there are no completed operations, we continue to wait
+            time.Sleep(time.Millisecond) // Emulate blocking wait
             continue
         }
 
-        // Checking the completion status
-        if wc.status != C.IBV_WC_SUCCESS {
-            return fmt.Errorf("work completion failed with status:%d wr_id:%d", wc.status, wc.wr_id)
+        // 3. Check the status of each completed WR
+        completed := wc[:numEvents]
+        for _, w := range completed {
+            if w.status != C.IBV_WC_SUCCESS {
+                return nil, fmt.Errorf("work completion failed: status=%d wr_id=%d", w.status, w.wr_id)
+            }
         }
 
-        return nil
+        return completed, nil // Return back successful Work Completions
     }
 }
