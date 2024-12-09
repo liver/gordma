@@ -5,7 +5,6 @@ import "C"
 import (
 	"errors"
 	"fmt"
-	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -78,8 +77,8 @@ func destroyCompChannel(channel *C.struct_ibv_comp_channel) C.int {
 }
 
 func (cq *CompletionQueue) WaitForCompletion() ([]C.struct_ibv_wc, error) {
-    const maxWC = 10 // Maximum Work Completions per call
-    wc := make([]C.struct_ibv_wc, maxWC)
+    // cq.cqe Maximum Work Completions per call
+    wc := make([]C.struct_ibv_wc, cq.cqe)
 
     for {
         // 1. CQ survey for Work Completion
@@ -88,9 +87,8 @@ func (cq *CompletionQueue) WaitForCompletion() ([]C.struct_ibv_wc, error) {
             return nil, errors.New("polling CQ failed")
         }
 
-        // 2. If there are no events, we wait (blocking mode)
+        // 2. If there are no events
         if numEvents == 0 {
-            time.Sleep(time.Millisecond) // Emulate blocking wait
             continue
         }
 
