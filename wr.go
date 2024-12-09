@@ -69,6 +69,16 @@ func (wr *ReceiveWorkRequest) String() string {
 		wr.mr.RemoteKey())
 }
 
+func (wr *ReceiveWorkRequest) Close() {
+	C.free(unsafe.Pointer(wr.recvWr))
+	C.free(unsafe.Pointer(wr.sge))
+}
+
+func (wr *SendWorkRequest) Close() {
+	C.free(unsafe.Pointer(wr.sendWr))
+	C.free(unsafe.Pointer(wr.sge))
+}
+
 func allocateAligned(size, alignment int) (unsafe.Pointer, error) {
     var ptr unsafe.Pointer
     errno := C.posix_memalign(&ptr, C.size_t(alignment), C.size_t(size))

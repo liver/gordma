@@ -77,12 +77,14 @@ func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	fmt.Printf("%s\n", mr)
 
 	rwr := gordma.NewReceiveWorkRequest(mr)
+	defer rwr.Close()
 	if err := qp.PostReceiveWithWait(rwr); err != nil {
 		return fmt.Errorf("PostReceive failed: %v\n", err)
 	}
 	fmt.Printf("from client R: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
 
 	swr := gordma.NewSendWorkRequest(mr)
+	defer swr.Close()
 	localData := mr.Buffer()
 	(*localData)[0] = byte(rand.Intn(9))
 	(*localData)[1] = byte(rand.Intn(9))
@@ -110,6 +112,7 @@ func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	fmt.Printf("%s\n", mr)
 
 	swr := gordma.NewSendWorkRequest(mr)
+	defer swr.Close()
 	localData := mr.Notice()
 	(*localData)[0] = byte(rand.Intn(9))
 	(*localData)[1] = byte(rand.Intn(9))
@@ -120,6 +123,7 @@ func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	}
 
 	rwr := gordma.NewReceiveWorkRequest(mr)
+	defer rwr.Close()
 	if err := qp.PostReceiveWithWait(rwr); err != nil {
 		return fmt.Errorf("PostReceive failed: %v\n", err)
 	}
