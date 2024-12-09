@@ -5,6 +5,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -80,26 +81,32 @@ func (cq *CompletionQueue) WaitForCompletion() ([]C.struct_ibv_wc, error) {
     // cq.cqe Maximum Work Completions per call
     wc := make([]C.struct_ibv_wc, cq.cqe)
 
-    for {
-        // 1. CQ survey for Work Completion
-        numEvents := C.ibv_poll_cq(cq.cq, C.int(len(wc)), &wc[0])
-        if numEvents < 0 {
-            return nil, errors.New("polling CQ failed")
-        }
+	ticker := time.NewTicker(time.Nanosecond)
+	defer ticker.Stop()
 
-        // 2. If there are no events
-        if numEvents == 0 {
-            continue
-        }
-
-        // 3. Check the status of each completed WR
-        completed := wc[:numEvents]
-        for _, w := range completed {
-            if w.status != C.IBV_WC_SUCCESS {
-                return nil, fmt.Errorf("work completion failed: status=%d wr_id=%d", w.status, w.wr_id)
-            }
-        }
-
-        return completed, nil // Return back successful Work Completions
+    for { //nolint:gosimple
+		select {
+		case <-ticker.C:
+			// 1. CQ survey for Work Completion
+			numEvents := C.ibv_poll_cq(cq.cq, C.int(len(wc)), &wc[0])
+			if numEvents < 0 {
+				return nil, errors.New("polling CQ failed")
+			}
+	
+			// 2. If there are no events
+			if numEvents == 0 {
+				continue
+			}
+	
+			// 3. Check the status of each completed WR
+			completed := wc[:numEvents]
+			for _, w := range completed {
+				if w.status != C.IBV_WC_SUCCESS {
+					return nil, fmt.Errorf("work completion failed: status=%d wr_id=%d", w.status, w.wr_id)
+				}
+			}
+	
+			return completed, nil // Return back successful Work Completions
+		}
     }
 }
