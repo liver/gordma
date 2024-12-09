@@ -93,6 +93,14 @@ func (m *MemoryRegion) Notice() *[]byte {
 	return memory
 }
 
+func (m *MemoryRegion) BufferPtr() unsafe.Pointer {
+	return m.mrBuf.addr
+}
+
+func (m *MemoryRegion) NoticePtr() unsafe.Pointer {
+	return m.mrNotice.addr
+}
+
 func (m *MemoryRegion) RemoteKey() uint32 {
 	return m.qp.Rkey
 }
