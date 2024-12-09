@@ -11,58 +11,58 @@ import (
 	"unsafe"
 )
 
-type sendWorkRequest struct {
+type SendWorkRequest struct {
 	mr     *MemoryRegion
 	sendWr *C.struct_ibv_send_wr
 	sge    *C.struct_ibv_sge
 }
 
-type receiveWorkRequest struct {
+type ReceiveWorkRequest struct {
 	mr     *MemoryRegion
 	recvWr *C.struct_ibv_recv_wr
 	sge    *C.struct_ibv_sge
 }
 
-func NewSendWorkRequest(mr *MemoryRegion) *sendWorkRequest {
+func NewSendWorkRequest(mr *MemoryRegion) *SendWorkRequest {
 	// for safe reference passing from Go to C
 	sendWr := (*C.struct_ibv_send_wr)(C.malloc(C.size_t(unsafe.Sizeof(C.struct_ibv_send_wr{}))))
 	sge := (*C.struct_ibv_sge)(C.malloc(C.size_t(unsafe.Sizeof(C.struct_ibv_sge{}))))
 
-	return &sendWorkRequest{
+	return &SendWorkRequest{
 		mr:     mr,
 		sendWr: sendWr,
 		sge:    sge,
 	}
 }
 
-func NewReceiveWorkRequest(mr *MemoryRegion) *receiveWorkRequest {
+func NewReceiveWorkRequest(mr *MemoryRegion) *ReceiveWorkRequest {
 	// for safe reference passing from Go to C
 	recvWr := (*C.struct_ibv_recv_wr)(C.malloc(C.size_t(unsafe.Sizeof(C.struct_ibv_recv_wr{}))))
 	sge := (*C.struct_ibv_sge)(C.malloc(C.size_t(unsafe.Sizeof(C.struct_ibv_sge{}))))
 
-	return &receiveWorkRequest{
+	return &ReceiveWorkRequest{
 		mr:     mr,
 		recvWr: recvWr,
 		sge:    sge,
 	}
 }
 
-func (s *sendWorkRequest) createWrId() C.uint64_t {
+func (s *SendWorkRequest) createWrId() C.uint64_t {
 	return C.uint64_t(uintptr(unsafe.Pointer(&(s.sendWr))))
 }
 
-func (wr *sendWorkRequest) String() string {
+func (wr *SendWorkRequest) String() string {
 	return fmt.Sprintf(
 		"WR: \n addr: %d\n key: %d\n",
 		wr.mr.RemoteAddr(),
 		wr.mr.RemoteKey())
 }
 
-func (r *receiveWorkRequest) createWrId() C.uint64_t {
+func (r *ReceiveWorkRequest) createWrId() C.uint64_t {
 	return C.uint64_t(uintptr(unsafe.Pointer(&(r.recvWr))))
 }
 
-func (wr *receiveWorkRequest) String() string {
+func (wr *ReceiveWorkRequest) String() string {
 	return fmt.Sprintf(
 		"WR: \n addr: %d\n key: %d\n",
 		wr.mr.RemoteAddr(),

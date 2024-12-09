@@ -159,7 +159,7 @@ func (q *QueuePair) Ready2Send() error {
 	return q.modify(&attr, mask)
 }
 
-func (q *QueuePair) PostSendWithWait(wr *sendWorkRequest) error {
+func (q *QueuePair) PostSendWithWait(wr *SendWorkRequest) error {
 	err := q.PostSend(wr)
 	if err != nil {
 		return err
@@ -173,11 +173,11 @@ func (q *QueuePair) PostSendWithWait(wr *sendWorkRequest) error {
 	return nil
 }
 
-func (q *QueuePair) PostSend(wr *sendWorkRequest) error {
+func (q *QueuePair) PostSend(wr *SendWorkRequest) error {
 	return q.PostSendImm(wr, 0)
 }
 
-func (q *QueuePair) PostSendImm(wr *sendWorkRequest, imm uint32) error {
+func (q *QueuePair) PostSendImm(wr *SendWorkRequest, imm uint32) error {
 	if imm > 0 {
 		// post_send_immediately
 		wr.sendWr.opcode = IBV_WR_SEND_WITH_IMM
@@ -208,7 +208,7 @@ func (q *QueuePair) PostSendImm(wr *sendWorkRequest, imm uint32) error {
 	return NewErrorOrNil("ibv_post_send", int32(errno))
 }
 
-func (q *QueuePair) PostReceiveWithWait(wr *receiveWorkRequest) error {
+func (q *QueuePair) PostReceiveWithWait(wr *ReceiveWorkRequest) error {
 	err := q.PostReceive(wr)
 	if err != nil {
 		return err
@@ -222,7 +222,7 @@ func (q *QueuePair) PostReceiveWithWait(wr *receiveWorkRequest) error {
 	return nil
 }
 
-func (q *QueuePair) PostReceive(wr *receiveWorkRequest) error {
+func (q *QueuePair) PostReceive(wr *ReceiveWorkRequest) error {
 	if q.qp == nil {
 		return QPClosedErr
 	}
@@ -240,7 +240,7 @@ func (q *QueuePair) PostReceive(wr *receiveWorkRequest) error {
 	return NewErrorOrNil("ibv_post_recv", int32(errno))
 }
 
-func (q *QueuePair) PostWriteWithWait(wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error {
+func (q *QueuePair) PostWriteWithWait(wr *SendWorkRequest, remoteAddr uint64, rkey uint32) error {
 	err := q.PostWriteImm(wr, remoteAddr, rkey, 0)
 	if err != nil {
 		return err
@@ -254,11 +254,11 @@ func (q *QueuePair) PostWriteWithWait(wr *sendWorkRequest, remoteAddr uint64, rk
 	return nil
 }
 
-func (q *QueuePair) PostWrite(wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error {
+func (q *QueuePair) PostWrite(wr *SendWorkRequest, remoteAddr uint64, rkey uint32) error {
 	return q.PostWriteImm(wr, remoteAddr, rkey, 0)
 }
 
-func (q *QueuePair) PostWriteImm(wr *sendWorkRequest, remoteAddr uint64, rkey uint32, imm uint32) error {
+func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, remoteAddr uint64, rkey uint32, imm uint32) error {
 	if q.qp == nil {
 		return QPClosedErr
 	}
@@ -284,7 +284,7 @@ func (q *QueuePair) PostWriteImm(wr *sendWorkRequest, remoteAddr uint64, rkey ui
 	return NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
 }
 
-func (q *QueuePair) PostReadWithWait(wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error {
+func (q *QueuePair) PostReadWithWait(wr *SendWorkRequest, remoteAddr uint64, rkey uint32) error {
 	err := q.PostRead(wr, remoteAddr, rkey)
 	if err != nil {
 		return err
@@ -298,7 +298,7 @@ func (q *QueuePair) PostReadWithWait(wr *sendWorkRequest, remoteAddr uint64, rke
 	return nil
 }
 
-func (q *QueuePair) PostRead(wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error {
+func (q *QueuePair) PostRead(wr *SendWorkRequest, remoteAddr uint64, rkey uint32) error {
 	var bad *C.struct_ibv_send_wr
 	wr.sendWr.opcode = IBV_WR_RDMA_READ
 	wr.sendWr.send_flags = IBV_SEND_SIGNALED
