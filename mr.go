@@ -93,6 +93,14 @@ func (m *MemoryRegion) Notice() *[]byte {
 	return memory
 }
 
+func (m *MemoryRegion) BufferLength() int {
+	return int(m.mrBuf.length)
+}
+
+func (m *MemoryRegion) NoticeLength() int {
+	return int(m.mrNotice.length)
+}
+
 func (m *MemoryRegion) BufferPtr() unsafe.Pointer {
 	return m.mrBuf.addr
 }
