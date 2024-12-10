@@ -1,28 +1,35 @@
-//go:build linux
-// +build linux
-
-package ibverbs
+package gordma
 
 //#include <infiniband/verbs.h>
 import "C"
 import (
 	"encoding/binary"
 	"errors"
-	"gordma/common"
-	"log"
+	"fmt"
 	"math/rand"
 	"time"
 )
 
 // queuePair QP
 type QueuePair struct {
-	psn  uint32
-	port int
-	qp   *C.struct_ibv_qp
-	cq   *C.struct_ibv_cq
+	psn             uint32
+	port            int
+	qp              *C.struct_ibv_qp
+	cq              *C.struct_ibv_cq
+	CompletionQueue *CompletionQueue
 }
 
-func NewQueuePair(ctx *rdmaContext, pd *protectDomain, cq *completionQueue) (*QueuePair, error) {
+type qpInfo struct {
+	Lid   uint16
+	Gid   [16]byte
+	QpNum uint32
+	Psn   uint32
+	Rkey  uint32
+	Raddr uint64
+	MTU   uint32
+}
+
+func NewQueuePair(ctx *RdmaContext, pd *ProtectDomain, cq *CompletionQueue) (*QueuePair, error) {
 	initAttr := C.struct_ibv_qp_init_attr{}
 	initAttr.send_cq = cq.cq
 	initAttr.recv_cq = cq.cq
@@ -40,7 +47,6 @@ func NewQueuePair(ctx *rdmaContext, pd *protectDomain, cq *completionQueue) (*Qu
 	qpC, err := C.ibv_create_qp(pd.pd, &initAttr)
 	if qpC == nil {
 		if err != nil {
-			log.Println("qp", err)
 			return nil, err
 		}
 		return nil, errors.New("qp: unknown error")
@@ -49,11 +55,16 @@ func NewQueuePair(ctx *rdmaContext, pd *protectDomain, cq *completionQueue) (*Qu
 	// create psn
 	psn := rand.New(rand.NewSource(time.Now().UnixNano())).Uint32() & 0xffffff
 	return &QueuePair{
-		psn:  psn,
-		port: ctx.Port,
-		qp:   qpC,
-		cq:   cq.cq,
+		psn:             psn,
+		port:            ctx.Port,
+		qp:              qpC,
+		cq:              cq.cq,
+		CompletionQueue: cq,
 	}, nil
+}
+
+func (q QueuePair) CQ() *C.struct_ibv_cq {
+	return q.cq
 }
 
 func (q *QueuePair) Psn() uint32 {
@@ -83,7 +94,7 @@ func (q *QueuePair) Close() error {
 
 func (q *QueuePair) modify(attr *C.struct_ibv_qp_attr, mask int) error {
 	errno := C.ibv_modify_qp(q.qp, attr, C.int(mask))
-	return common.NewErrorOrNil("ibv_modify_qp", int32(int32(errno)))
+	return NewErrorOrNil("ibv_modify_qp", int32(int32(errno)))
 }
 
 func (q *QueuePair) Init() error {
@@ -98,26 +109,35 @@ func (q *QueuePair) Init() error {
 }
 
 // Ready2Receive RTR
-// 尽管是 RTR，但是 send 和 receive 的配置都在这里提前配好
-func (q *QueuePair) Ready2Receive(destGid uint16, destQpn, destPsn uint32) error {
+func (q *QueuePair) Ready2Receive(mtu uint32, destGidLocal uint16, destGidGlobal [16]byte, destQpn, destPsn uint32) error {
 	attr := C.struct_ibv_qp_attr{}
 	attr.qp_state = C.IBV_QPS_RTR
-	attr.path_mtu = C.IBV_MTU_2048
+	attr.path_mtu = mtu
 	attr.dest_qp_num = C.uint32_t(destQpn)
 	attr.rq_psn = C.uint32_t(destPsn)
 	// this must be > 0 to avoid IBV_WC_REM_INV_REQ_ERR
 	attr.max_dest_rd_atomic = 1
 	// Minimum RNR NAK timer (range 0..31)
-	attr.min_rnr_timer = 26
-	attr.ah_attr.is_global = 0
-	attr.ah_attr.dlid = C.uint16_t(destGid)
+	attr.min_rnr_timer = 24
+	attr.ah_attr.dlid = C.uint16_t(destGidLocal)
 	//  attr.ah_attr.dlid = C.uint16_t(destLid)
 	attr.ah_attr.sl = 0
 	attr.ah_attr.src_path_bits = 0
 	attr.ah_attr.port_num = C.uint8_t(q.port)
 	mask := C.IBV_QP_STATE | C.IBV_QP_AV | C.IBV_QP_PATH_MTU | C.IBV_QP_DEST_QPN |
-		C.IBV_QP_RQ_PSN | C.IBV_QP_MAX_DEST_RD_ATOMIC | C.IBV_QP_MIN_RNR_TIMER
+		    C.IBV_QP_RQ_PSN | C.IBV_QP_MAX_DEST_RD_ATOMIC | C.IBV_QP_MIN_RNR_TIMER
+	
+	// for Soft-RoCE (aka RXE)
+	attr.ah_attr.is_global = 1
+	attr.ah_attr.grh.dgid = destGidGlobal
+	attr.ah_attr.grh.flow_label = 0;
+	attr.ah_attr.grh.hop_limit = 1;
+	attr.ah_attr.grh.sgid_index = C.uint8_t(0)
+	attr.ah_attr.grh.traffic_class = 0;
+	//
+
 	return q.modify(&attr, mask)
+	
 }
 
 // Ready2Send RTS
@@ -139,21 +159,25 @@ func (q *QueuePair) Ready2Send() error {
 	return q.modify(&attr, mask)
 }
 
-/**
-QP action
-PostSend
-PostSendImm
-PostReceive
-PostRead
-PostWrite
-TODO: 将 sge 封装起来，尝试复用各个 Post 操作
-*/
+func (q *QueuePair) PostSendWithWait(wr *SendWorkRequest) error {
+	err := q.PostSend(wr)
+	if err != nil {
+		return err
+	}
 
-func (q *QueuePair) PostSend(wr *sendWorkRequest) error {
+	err = q.CompletionQueue.WaitForCompletion()
+	if err != nil {
+		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
+	}
+
+	return nil
+}
+
+func (q *QueuePair) PostSend(wr *SendWorkRequest) error {
 	return q.PostSendImm(wr, 0)
 }
 
-func (q *QueuePair) PostSendImm(wr *sendWorkRequest, imm uint32) error {
+func (q *QueuePair) PostSendImm(wr *SendWorkRequest, imm uint32) error {
 	if imm > 0 {
 		// post_send_immediately
 		wr.sendWr.opcode = IBV_WR_SEND_WITH_IMM
@@ -167,92 +191,128 @@ func (q *QueuePair) PostSendImm(wr *sendWorkRequest, imm uint32) error {
 	}
 
 	if wr.mr != nil {
-		var sge C.struct_ibv_sge
-		wr.sendWr.sg_list = &sge
+		wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrNotice.addr))
+		wr.sge.length = C.uint32_t(wr.mr.mrNotice.length)
+		wr.sge.lkey = wr.mr.mrNotice.lkey
+		wr.sendWr.sg_list = wr.sge
 		wr.sendWr.num_sge = 1
-		sge.addr = C.uint64_t(uintptr(wr.mr.mr.addr))
-		sge.length = C.uint32_t(wr.mr.mr.length)
-		sge.lkey = wr.mr.mr.lkey
+		wr.sendWr.next = nil
 	} else {
 		// send inline if there is no memory region to send
 		wr.sendWr.send_flags = IBV_SEND_INLINE
 	}
 	wr.sendWr.wr_id = wr.createWrId()
 	var bad *C.struct_ibv_send_wr
+
 	errno := C.ibv_post_send(q.qp, wr.sendWr, &bad)
-	return common.NewErrorOrNil("ibv_post_send", int32(errno))
+	return NewErrorOrNil("ibv_post_send", int32(errno))
 }
 
-func (q *QueuePair) PostReceive(wr *receiveWorkRequest) error {
+func (q *QueuePair) PostReceiveWithWait(wr *ReceiveWorkRequest) error {
+	err := q.PostReceive(wr)
+	if err != nil {
+		return err
+	}
+
+	err = q.CompletionQueue.WaitForCompletion()
+	if err != nil {
+		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
+	}
+
+	return nil
+}
+
+func (q *QueuePair) PostReceive(wr *ReceiveWorkRequest) error {
 	if q.qp == nil {
 		return QPClosedErr
 	}
 
-	var sge C.struct_ibv_sge
 	var bad *C.struct_ibv_recv_wr
-	wr.recvWr.sg_list = &sge
+	wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrNotice.addr))
+	wr.sge.length = C.uint32_t(wr.mr.mrNotice.length)
+	wr.sge.lkey = wr.mr.mrNotice.lkey
+	wr.recvWr.sg_list = wr.sge
 	wr.recvWr.num_sge = 1
-	sge.addr = C.uint64_t(uintptr(wr.mr.mr.addr))
-	sge.length = C.uint32_t(wr.mr.mr.length)
-	sge.lkey = wr.mr.mr.lkey
+	wr.recvWr.next = nil
 	wr.recvWr.wr_id = wr.createWrId()
+
 	errno := C.ibv_post_recv(q.qp, wr.recvWr, &bad)
-	return common.NewErrorOrNil("ibv_post_recv", int32(errno))
+	return NewErrorOrNil("ibv_post_recv", int32(errno))
 }
 
-func (q *QueuePair) PostWrite(wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error {
+func (q *QueuePair) PostWriteWithWait(wr *SendWorkRequest, remoteAddr uint64, rkey uint32) error {
+	err := q.PostWriteImm(wr, remoteAddr, rkey, 0)
+	if err != nil {
+		return err
+	}
+
+	err = q.CompletionQueue.WaitForCompletion()
+	if err != nil {
+		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
+	}
+
+	return nil
+}
+
+func (q *QueuePair) PostWrite(wr *SendWorkRequest, remoteAddr uint64, rkey uint32) error {
 	return q.PostWriteImm(wr, remoteAddr, rkey, 0)
 }
 
-func (q *QueuePair) PostWriteImm(wr *sendWorkRequest, remoteAddr uint64, rkey uint32, imm uint32) error {
+func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, remoteAddr uint64, rkey uint32, imm uint32) error {
 	if q.qp == nil {
 		return QPClosedErr
 	}
 
-	if imm > 0 {
+	// if imm > 0 {
+	// }else {
+	// }
 
-	} else {
-
-	}
-	var sge C.struct_ibv_sge
 	var bad *C.struct_ibv_send_wr
+	wr.sendWr.wr_id = wr.createWrId()
 	wr.sendWr.opcode = IBV_WR_RDMA_WRITE
 	wr.sendWr.send_flags = IBV_SEND_SIGNALED
-	wr.sendWr.sg_list = &sge
+	wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrBuf.addr))
+	wr.sge.length = C.uint32_t(wr.mr.mrBuf.length)
+	wr.sge.lkey = wr.mr.mrBuf.lkey
+	wr.sendWr.sg_list = wr.sge
 	wr.sendWr.num_sge = 1
-	sge.addr = C.uint64_t(uintptr(wr.mr.mr.addr))
-	sge.length = C.uint32_t(wr.mr.mr.length)
-	sge.lkey = wr.mr.mr.lkey
-	// TODO: validate
+	wr.sendWr.next = nil
 	binary.LittleEndian.PutUint64(wr.sendWr.wr[:8], remoteAddr)
 	binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], rkey)
-	// wr.sendWr.wr.remoteAddr = remoteAddr
-	// wr.sendWr.wr.rkey = rkey
-
-	wr.sendWr.wr_id = wr.createWrId()
 
 	errno := C.ibv_post_send(q.qp, wr.sendWr, &bad)
-	return common.NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
+	return NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
 }
 
-func (q *QueuePair) PostRead(wr *sendWorkRequest, remoteAddr uint64, rkey uint32) error {
-	var sge C.struct_ibv_sge
+func (q *QueuePair) PostReadWithWait(wr *SendWorkRequest, remoteAddr uint64, rkey uint32) error {
+	err := q.PostRead(wr, remoteAddr, rkey)
+	if err != nil {
+		return err
+	}
+
+	err = q.CompletionQueue.WaitForCompletion()
+	if err != nil {
+		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
+	}
+
+	return nil
+}
+
+func (q *QueuePair) PostRead(wr *SendWorkRequest, remoteAddr uint64, rkey uint32) error {
 	var bad *C.struct_ibv_send_wr
 	wr.sendWr.opcode = IBV_WR_RDMA_READ
 	wr.sendWr.send_flags = IBV_SEND_SIGNALED
-	wr.sendWr.sg_list = &sge
+	wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrBuf.addr))
+	wr.sge.length = C.uint32_t(wr.mr.mrBuf.length)
+	wr.sge.lkey = wr.mr.mrBuf.lkey
+	wr.sendWr.sg_list = wr.sge
 	wr.sendWr.num_sge = 1
-	sge.addr = C.uint64_t(uintptr(wr.mr.mr.addr))
-	sge.length = C.uint32_t(wr.mr.mr.length)
-	sge.lkey = wr.mr.mr.lkey
-	// TODO: validate
+	wr.sendWr.next = nil
 	binary.LittleEndian.PutUint64(wr.sendWr.wr[:8], remoteAddr)
 	binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], rkey)
-	// wr.sendWr.wr.remoteAddr = remoteAddr
-	// wr.sendWr.wr.rkey = rkey
 
 	wr.sendWr.wr_id = wr.createWrId()
 
 	errno := C.ibv_post_send(q.qp, wr.sendWr, &bad)
-	return common.NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
+	return NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
 }
