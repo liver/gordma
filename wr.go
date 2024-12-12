@@ -54,8 +54,8 @@ func (s *SendWorkRequest) createWrId() C.uint64_t {
 func (wr *SendWorkRequest) String() string {
 	return fmt.Sprintf(
 		"WR: \n addr: %d\n key: %d\n",
-		wr.mr.RemoteAddr(),
-		wr.mr.RemoteKey())
+		wr.mr.BufRemoteAddr(),
+		wr.mr.BufRemoteKey())
 }
 
 func (r *ReceiveWorkRequest) createWrId() C.uint64_t {
@@ -65,8 +65,8 @@ func (r *ReceiveWorkRequest) createWrId() C.uint64_t {
 func (wr *ReceiveWorkRequest) String() string {
 	return fmt.Sprintf(
 		"WR: \n addr: %d\n key: %d\n",
-		wr.mr.RemoteAddr(),
-		wr.mr.RemoteKey())
+		wr.mr.BufRemoteAddr(),
+		wr.mr.BufRemoteKey())
 }
 
 func (wr *ReceiveWorkRequest) Close() {

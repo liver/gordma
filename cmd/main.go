@@ -92,17 +92,23 @@ func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	(*localData)[3] = byte(rand.Intn(9))
 	(*localData)[4] = byte(rand.Intn(9))
 	fmt.Printf("from server W: %d%d%d%d%d\n", (*mr.Buffer())[0], (*mr.Buffer())[1], (*mr.Buffer())[2], (*mr.Buffer())[3], (*mr.Buffer())[4])
-	if err := qp.PostWriteWithWait(swr, mr.RemoteAddr(), mr.RemoteKey()); err != nil {
+	if err := qp.PostWriteWithWait(swr, gordma.MemBuffer); err != nil {
 		return fmt.Errorf("PostWrite failed: %v\n", err)
 	}
 
 	localNotice := mr.Notice()
-	(*localNotice)[0] = byte(rand.Intn(9))
+	(*localNotice)[0] = byte(randomInRange(2, 9))
 	(*localNotice)[1] = byte(rand.Intn(9))
 	(*localNotice)[2] = byte(rand.Intn(9))
 	fmt.Printf("from server S: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
 	if err := qp.PostSendWithWait(swr); err != nil {
 		return fmt.Errorf("PostSend failed: %v\n", err)
+	}
+
+	(*localNotice)[0] = 1
+	fmt.Printf("from server I: %d\n", (*mr.Notice())[0])
+	if err := qp.PostWriteImm(swr, gordma.MemNotice, 1); err != nil {
+		return fmt.Errorf("PostWriteImm failed: %v\n", err)
 	}
 
 	return nil
@@ -113,10 +119,10 @@ func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 
 	swr := gordma.NewSendWorkRequest(mr)
 	defer swr.Close()
-	localData := mr.Notice()
-	(*localData)[0] = byte(rand.Intn(9))
-	(*localData)[1] = byte(rand.Intn(9))
-	(*localData)[2] = byte(rand.Intn(9))
+	localNotice := mr.Notice()
+	(*localNotice)[0] = byte(randomInRange(2, 9))
+	(*localNotice)[1] = byte(rand.Intn(9))
+	(*localNotice)[2] = byte(rand.Intn(9))
 	fmt.Printf("from client S: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
 	if err := qp.PostSendWithWait(swr); err != nil {
 		return fmt.Errorf("PostSend failed: %v\n", err)
@@ -131,5 +137,18 @@ func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 
 	fmt.Printf("from server W: %d%d%d%d%d\n", (*mr.Buffer())[0], (*mr.Buffer())[1], (*mr.Buffer())[2], (*mr.Buffer())[3], (*mr.Buffer())[4])
 
+	for {
+		if (*mr.Notice())[0] == 1 {
+			break
+		}
+		fmt.Printf("loop\n")
+	}
+
+	fmt.Printf("from server I: %d\n", (*mr.Notice())[0])
+
 	return nil
+}
+
+func randomInRange(min, max int) int {
+	return rand.Intn(max-min+1) + min
 }

@@ -7,6 +7,13 @@ import (
 	"syscall"
 )
 
+type Type int
+
+const (
+    MemBuffer Type = 0
+    MemNotice Type = 1
+)
+
 func NewErrorOrNil(name string, errno int32) error {
 	if errno > 0 {
 		return os.NewSyscallError(name, syscall.Errno(errno))

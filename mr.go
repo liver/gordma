@@ -58,8 +58,10 @@ func NewMemoryRegion(pd *ProtectDomain, bufSize int, noticeSize int) (*MemoryReg
 		notice:     uintptr(unsafe.Pointer(&notice[0])),
 		noticeSize: noticeSize,
 		qp:         qpInfo{
-			Rkey:  uint32(mrBuf.rkey),
-			Raddr: uint64(uintptr(unsafe.Pointer(&buf[0]))),
+			BufRkey:  uint32(mrBuf.rkey),
+			BufRaddr: uint64(uintptr(unsafe.Pointer(&buf[0]))),
+			NoticeRkey:  uint32(mrNotice.rkey),
+			NoticeRaddr: uint64(uintptr(unsafe.Pointer(&notice[0]))),
 		},
 	}
 
@@ -109,23 +111,34 @@ func (m *MemoryRegion) NoticePtr() unsafe.Pointer {
 	return m.mrNotice.addr
 }
 
-func (m *MemoryRegion) RemoteKey() uint32 {
-	return m.qp.Rkey
+func (m *MemoryRegion) BufRemoteKey() uint32 {
+	return m.qp.BufRkey
 }
 
-func (m *MemoryRegion) RemoteAddr() uint64 {
-	return m.qp.Raddr
+func (m *MemoryRegion) BufRemoteAddr() uint64 {
+	return m.qp.BufRaddr
 }
-func (m *MemoryRegion) LocalKey() uint32 {
+func (m *MemoryRegion) BufLocalKey() uint32 {
 	return uint32(m.mrBuf.lkey)
+}
+
+func (m *MemoryRegion) NoticeRemoteKey() uint32 {
+	return m.qp.NoticeRkey
+}
+
+func (m *MemoryRegion) NoticeRemoteAddr() uint64 {
+	return m.qp.NoticeRaddr
+}
+func (m *MemoryRegion) NoticeLocalKey() uint32 {
+	return uint32(m.mrNotice.lkey)
 }
 
 func (m *MemoryRegion) String() string {
 	return fmt.Sprintf(
 		"MemoryRegion RemoteAddr:%d LocalKey:%d RemoteKey:%d len:%d",
-		m.RemoteAddr(),
-		m.mrBuf.lkey,
-		m.RemoteKey(),
+		m.BufRemoteAddr(),
+		m.BufLocalKey(),
+		m.BufRemoteKey(),
 		len(*m.Buffer()))
 }
 

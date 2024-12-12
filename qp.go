@@ -20,13 +20,15 @@ type QueuePair struct {
 }
 
 type qpInfo struct {
-	Lid   uint16
-	Gid   [16]byte
-	QpNum uint32
-	Psn   uint32
-	Rkey  uint32
-	Raddr uint64
-	MTU   uint32
+	Lid         uint16
+	Gid         [16]byte
+	QpNum       uint32
+	Psn         uint32
+	BufRkey     uint32
+	BufRaddr    uint64
+	NoticeRkey  uint32
+	NoticeRaddr uint64
+	MTU         uint32
 }
 
 func NewQueuePair(ctx *RdmaContext, pd *ProtectDomain, cq *CompletionQueue) (*QueuePair, error) {
@@ -240,8 +242,8 @@ func (q *QueuePair) PostReceive(wr *ReceiveWorkRequest) error {
 	return NewErrorOrNil("ibv_post_recv", int32(errno))
 }
 
-func (q *QueuePair) PostWriteWithWait(wr *SendWorkRequest, remoteAddr uint64, rkey uint32) error {
-	err := q.PostWriteImm(wr, remoteAddr, rkey, 0)
+func (q *QueuePair) PostWriteWithWait(wr *SendWorkRequest, memType Type) error {
+	err := q.PostWriteImm(wr, memType, 0)
 	if err != nil {
 		return err
 	}
@@ -254,38 +256,50 @@ func (q *QueuePair) PostWriteWithWait(wr *SendWorkRequest, remoteAddr uint64, rk
 	return nil
 }
 
-func (q *QueuePair) PostWrite(wr *SendWorkRequest, remoteAddr uint64, rkey uint32) error {
-	return q.PostWriteImm(wr, remoteAddr, rkey, 0)
+func (q *QueuePair) PostWrite(wr *SendWorkRequest, memType Type) error {
+	return q.PostWriteImm(wr, memType, 0)
 }
 
-func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, remoteAddr uint64, rkey uint32, imm uint32) error {
+func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, memType Type, imm uint32) error {
 	if q.qp == nil {
 		return QPClosedErr
 	}
 
-	// if imm > 0 {
-	// }else {
-	// }
-
 	var bad *C.struct_ibv_send_wr
 	wr.sendWr.wr_id = wr.createWrId()
 	wr.sendWr.opcode = IBV_WR_RDMA_WRITE
-	wr.sendWr.send_flags = IBV_SEND_SIGNALED
-	wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrBuf.addr))
-	wr.sge.length = C.uint32_t(wr.mr.mrBuf.length)
-	wr.sge.lkey = wr.mr.mrBuf.lkey
+
+	if imm > 0 {
+		wr.sendWr.send_flags = 0
+	}else {
+		wr.sendWr.send_flags = IBV_SEND_SIGNALED
+	}
+
 	wr.sendWr.sg_list = wr.sge
 	wr.sendWr.num_sge = 1
 	wr.sendWr.next = nil
-	binary.LittleEndian.PutUint64(wr.sendWr.wr[:8], remoteAddr)
-	binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], rkey)
+
+	switch memType {
+	case MemBuffer:
+		wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrBuf.addr))
+		wr.sge.length = C.uint32_t(wr.mr.mrBuf.length)
+		wr.sge.lkey = wr.mr.mrBuf.lkey
+		binary.LittleEndian.PutUint64(wr.sendWr.wr[:8], wr.mr.BufRemoteAddr())
+		binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], wr.mr.BufRemoteKey())
+	case MemNotice:
+		wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrNotice.addr))
+		wr.sge.length = C.uint32_t(wr.mr.mrNotice.length)
+		wr.sge.lkey = wr.mr.mrNotice.lkey
+		binary.LittleEndian.PutUint64(wr.sendWr.wr[:8], wr.mr.NoticeRemoteAddr())
+		binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], wr.mr.NoticeRemoteKey())
+	}
 
 	errno := C.ibv_post_send(q.qp, wr.sendWr, &bad)
 	return NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
 }
 
-func (q *QueuePair) PostReadWithWait(wr *SendWorkRequest, remoteAddr uint64, rkey uint32) error {
-	err := q.PostRead(wr, remoteAddr, rkey)
+func (q *QueuePair) PostReadWithWait(wr *SendWorkRequest, memType Type) error {
+	err := q.PostRead(wr, memType)
 	if err != nil {
 		return err
 	}
@@ -298,18 +312,29 @@ func (q *QueuePair) PostReadWithWait(wr *SendWorkRequest, remoteAddr uint64, rke
 	return nil
 }
 
-func (q *QueuePair) PostRead(wr *SendWorkRequest, remoteAddr uint64, rkey uint32) error {
+func (q *QueuePair) PostRead(wr *SendWorkRequest, memType Type) error {
 	var bad *C.struct_ibv_send_wr
 	wr.sendWr.opcode = IBV_WR_RDMA_READ
 	wr.sendWr.send_flags = IBV_SEND_SIGNALED
-	wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrBuf.addr))
-	wr.sge.length = C.uint32_t(wr.mr.mrBuf.length)
-	wr.sge.lkey = wr.mr.mrBuf.lkey
+
+	switch memType {
+	case MemBuffer:
+		wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrBuf.addr))
+		wr.sge.length = C.uint32_t(wr.mr.mrBuf.length)
+		wr.sge.lkey = wr.mr.mrBuf.lkey
+		binary.LittleEndian.PutUint64(wr.sendWr.wr[:8], wr.mr.BufRemoteAddr())
+		binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], wr.mr.BufRemoteKey())
+	case MemNotice:
+		wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrNotice.addr))
+		wr.sge.length = C.uint32_t(wr.mr.mrNotice.length)
+		wr.sge.lkey = wr.mr.mrNotice.lkey
+		binary.LittleEndian.PutUint64(wr.sendWr.wr[:8], wr.mr.NoticeRemoteAddr())
+		binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], wr.mr.NoticeRemoteKey())
+	}
+	
 	wr.sendWr.sg_list = wr.sge
 	wr.sendWr.num_sge = 1
 	wr.sendWr.next = nil
-	binary.LittleEndian.PutUint64(wr.sendWr.wr[:8], remoteAddr)
-	binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], rkey)
 
 	wr.sendWr.wr_id = wr.createWrId()
 

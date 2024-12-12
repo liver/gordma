@@ -28,12 +28,14 @@ func ConnectQpClient(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, server s
 	bufNew := &bytes.Buffer{}
 
 	localQpInfo := qpInfo{
-		Lid:   HostToNetShort(uint16(ctx.portAttr.lid)),
-		Gid:   ctx.gid,
-		QpNum: HostToNetLong(qp.Qpn()),
-		Psn:   HostToNetLong(qp.Psn()),
-		Rkey:  HostToNetLong(mr.RemoteKey()),
-		Raddr: HostToNetLongLong(mr.RemoteAddr()),
+		Gid:         ctx.gid,
+		Lid:         HostToNetShort(uint16(ctx.portAttr.lid)),
+		QpNum:       HostToNetLong(qp.Qpn()),
+		Psn:         HostToNetLong(qp.Psn()),
+		BufRkey:     HostToNetLong(mr.BufRemoteKey()),
+		BufRaddr:    HostToNetLongLong(mr.BufRemoteAddr()),
+		NoticeRkey:  HostToNetLong(mr.NoticeRemoteKey()),
+		NoticeRaddr: HostToNetLongLong(mr.NoticeRemoteAddr()),
 	}
 	err = binary.Write(bufNew, binary.BigEndian, localQpInfo)
 	if err != nil {
@@ -57,13 +59,15 @@ func ConnectQpClient(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, server s
 	}
 
 	mr.qp = qpInfo{
-		Lid:   NetToHostShort(bufQpInfo.Lid),
-		Gid:   bufQpInfo.Gid,
-		QpNum: NetToHostLong(bufQpInfo.QpNum),
-		Psn:   NetToHostLong(bufQpInfo.Psn),
-		Rkey:  NetToHostLong(bufQpInfo.Rkey),
-		Raddr: NetToHostLongLong(bufQpInfo.Raddr),
-		MTU:   NetToHostLong(bufQpInfo.MTU),
+		Gid:         bufQpInfo.Gid,
+		Lid:         NetToHostShort(bufQpInfo.Lid),
+		QpNum:       NetToHostLong(bufQpInfo.QpNum),
+		Psn:         NetToHostLong(bufQpInfo.Psn),
+		BufRkey:     NetToHostLong(bufQpInfo.BufRkey),
+		BufRaddr:    NetToHostLongLong(bufQpInfo.BufRaddr),
+		NoticeRkey:  NetToHostLong(bufQpInfo.NoticeRkey),
+		NoticeRaddr: NetToHostLongLong(bufQpInfo.NoticeRaddr),
+		MTU:         NetToHostLong(bufQpInfo.MTU),
 	}
 
 	err = modify_qp_to_rts(qp, mr.qp.MTU, mr.qp.Lid, mr.qp.Gid, mr.qp.QpNum, mr.qp.Psn)
@@ -127,13 +131,15 @@ func ConnectQpServer(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, port int
 
 	bufNew = &bytes.Buffer{}
 	localQpInfo := qpInfo{
-		Lid:   HostToNetShort(uint16(ctx.portAttr.lid)),
-		Gid:   ctx.gid,
-		QpNum: HostToNetLong(qp.Qpn()),
-		Psn:   HostToNetLong(qp.Psn()),
-		Rkey:  HostToNetLong(mr.RemoteKey()),
-		Raddr: HostToNetLongLong(mr.RemoteAddr()),
-		MTU:   HostToNetLong(uint32(ctx.IBV_MTU)),
+		Gid:         ctx.gid,
+		Lid:         HostToNetShort(uint16(ctx.portAttr.lid)),
+		QpNum:       HostToNetLong(qp.Qpn()),
+		Psn:         HostToNetLong(qp.Psn()),
+		BufRkey:     HostToNetLong(mr.BufRemoteKey()),
+		BufRaddr:    HostToNetLongLong(mr.BufRemoteAddr()),
+		NoticeRkey:  HostToNetLong(mr.NoticeRemoteKey()),
+		NoticeRaddr: HostToNetLongLong(mr.NoticeRemoteAddr()),
+		MTU:         HostToNetLong(uint32(ctx.IBV_MTU)),
 	}
 	err = binary.Write(bufNew, binary.BigEndian, localQpInfo)
 	if err != nil {
@@ -145,13 +151,15 @@ func ConnectQpServer(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, port int
 	}
 
 	mr.qp = qpInfo{
-		Lid:   NetToHostShort(bufQpInfo.Lid),
-		Gid:   bufQpInfo.Gid,
-		QpNum: NetToHostLong(bufQpInfo.QpNum),
-		Psn:   NetToHostLong(bufQpInfo.Psn),
-		Rkey:  NetToHostLong(bufQpInfo.Rkey),
-		Raddr: NetToHostLongLong(bufQpInfo.Raddr),
-		MTU:   uint32(ctx.IBV_MTU),
+		Gid:         bufQpInfo.Gid,
+		Lid:         NetToHostShort(bufQpInfo.Lid),
+		QpNum:       NetToHostLong(bufQpInfo.QpNum),
+		Psn:         NetToHostLong(bufQpInfo.Psn),
+		BufRkey:     NetToHostLong(bufQpInfo.BufRkey),
+		BufRaddr:    NetToHostLongLong(bufQpInfo.BufRaddr),
+		NoticeRkey:  NetToHostLong(bufQpInfo.NoticeRkey),
+		NoticeRaddr: NetToHostLongLong(bufQpInfo.NoticeRaddr),
+		MTU:         uint32(ctx.IBV_MTU),
 	}
 
 	err = modify_qp_to_rts(qp, mr.qp.MTU, mr.qp.Lid, mr.qp.Gid, mr.qp.QpNum, mr.qp.Psn)
