@@ -8,6 +8,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"unsafe"
 )
 
@@ -47,8 +48,12 @@ func NewReceiveWorkRequest(mr *MemoryRegion) *ReceiveWorkRequest {
 	}
 }
 
+var wrIDCounter uint64
+
 func (s *SendWorkRequest) createWrId() C.uint64_t {
-	return C.uint64_t(uintptr(unsafe.Pointer(&(s.sendWr))))
+	baseID := uintptr(unsafe.Pointer(&(s.sendWr)))
+	counter := atomic.AddUint64(&wrIDCounter, 1)
+	return C.uint64_t(baseID) ^ C.uint64_t(counter)
 }
 
 func (wr *SendWorkRequest) String() string {

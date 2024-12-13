@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"time"
 
 	"github.com/liver/gordma"
 )
@@ -83,6 +84,9 @@ func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	}
 	fmt.Printf("from client R: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
 
+	time.Sleep(time.Microsecond)
+	fmt.Printf("from client I: %d\n", (*mr.Notice())[0])
+
 	swr := gordma.NewSendWorkRequest(mr)
 	defer swr.Close()
 	localData := mr.Buffer()
@@ -120,12 +124,18 @@ func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	swr := gordma.NewSendWorkRequest(mr)
 	defer swr.Close()
 	localNotice := mr.Notice()
-	(*localNotice)[0] = byte(randomInRange(2, 9))
+	(*localNotice)[0] = byte(randomInRange(3, 9))
 	(*localNotice)[1] = byte(rand.Intn(9))
 	(*localNotice)[2] = byte(rand.Intn(9))
 	fmt.Printf("from client S: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
 	if err := qp.PostSendWithWait(swr); err != nil {
 		return fmt.Errorf("PostSend failed: %v\n", err)
+	}
+
+	(*localNotice)[0] = 2
+	fmt.Printf("from client I: %d\n", (*mr.Notice())[0])
+	if err := qp.PostWriteImm(swr, gordma.MemNotice, 1); err != nil {
+		return fmt.Errorf("PostWriteImm failed: %v\n", err)
 	}
 
 	rwr := gordma.NewReceiveWorkRequest(mr)
@@ -134,17 +144,15 @@ func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 		return fmt.Errorf("PostReceive failed: %v\n", err)
 	}
 	fmt.Printf("from server R: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
-
-	fmt.Printf("from server W: %d%d%d%d%d\n", (*mr.Buffer())[0], (*mr.Buffer())[1], (*mr.Buffer())[2], (*mr.Buffer())[3], (*mr.Buffer())[4])
-
+	
 	for {
 		if (*mr.Notice())[0] == 1 {
 			break
 		}
-		fmt.Printf("loop\n")
 	}
 
 	fmt.Printf("from server I: %d\n", (*mr.Notice())[0])
+	fmt.Printf("from server W: %d%d%d%d%d\n", (*mr.Buffer())[0], (*mr.Buffer())[1], (*mr.Buffer())[2], (*mr.Buffer())[3], (*mr.Buffer())[4])
 
 	return nil
 }

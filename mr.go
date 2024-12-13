@@ -35,19 +35,19 @@ func NewMemoryRegion(pd *ProtectDomain, bufSize int, noticeSize int) (*MemoryReg
 	}
 	notice, err := unix.Mmap(-1, 0, noticeSize, mrPort, mrFlags)
 	if err != nil {
-		return nil, errors.New("mmap: failed to Mmap the buf")
+		return nil, errors.New("mmap: failed to Mmap the notice")
 	}
 
 	const access = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE
 	mrBuf := C.ibv_reg_mr(pd.pd, unsafe.Pointer(&buf[0]), C.size_t(bufSize), access)
 	if mrBuf == nil {
 		_ = unix.Munmap(buf)
-		return nil, errors.New("ibv_reg_mr: failed to reg mr")
+		return nil, errors.New("ibv_reg_mr: failed to reg mr buf")
 	}
 	mrNotice := C.ibv_reg_mr(pd.pd, unsafe.Pointer(&notice[0]), C.size_t(noticeSize), access)
 	if mrNotice == nil {
 		_ = unix.Munmap(notice)
-		return nil, errors.New("ibv_reg_mr: failed to reg mr")
+		return nil, errors.New("ibv_reg_mr: failed to reg mr notice")
 	}
 	mr := &MemoryRegion{
 		PD:         pd,
