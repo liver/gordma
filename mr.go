@@ -65,6 +65,7 @@ func NewMemoryRegion(pd *ProtectDomain, bufSize int, noticeSize int) (*MemoryReg
 		},
 	}
 
+	// Enable finalizer
 	runtime.SetFinalizer(mr, (*MemoryRegion).finalize)
 	return mr, nil
 }
@@ -183,5 +184,7 @@ func (m *MemoryRegion) Close() error {
 	}
 	///
 
+	// Disable finalizer
+	runtime.SetFinalizer(m, nil)
 	return nil
 }
