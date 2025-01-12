@@ -171,7 +171,7 @@ func (q *QueuePair) PostSendWithWait(wr *SendWorkRequest, ctx context.Context) e
 }
 
 func (q *QueuePair) PostSend(wr *SendWorkRequest) (uint64, error) {
-	return q.PostSendImm(wr, 1)
+	return q.PostSendImm(wr, 0)
 }
 
 func (q *QueuePair) PostSendImm(wr *SendWorkRequest, imm uint32) (uint64, error) {
