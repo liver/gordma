@@ -66,3 +66,12 @@ func HostToNetLongLong(i uint64) uint64 {
     binary.LittleEndian.PutUint64(b, i)
     return binary.BigEndian.Uint64(b)
 }
+
+func Contains(slice []uint64, value uint64) bool {
+	for _, v := range slice {
+		if v == value {
+			return true
+		}
+	}
+	return false
+}

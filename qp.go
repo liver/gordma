@@ -3,9 +3,9 @@ package gordma
 //#include <infiniband/verbs.h>
 import "C"
 import (
+	"context"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"math/rand"
 	"time"
 )
@@ -161,25 +161,20 @@ func (q *QueuePair) Ready2Send() error {
 	return q.modify(&attr, mask)
 }
 
-func (q *QueuePair) PostSendWithWait(wr *SendWorkRequest) error {
-	err := q.PostSend(wr)
+func (q *QueuePair) PostSendWithWait(wr *SendWorkRequest, ctx context.Context) error {
+	wr_id, err := q.PostSend(wr)
 	if err != nil {
 		return err
 	}
 
-	err = q.CompletionQueue.WaitForCompletion()
-	if err != nil {
-		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
-	}
-
-	return nil
+	return q.CompletionQueue.WaitForCompletionId(ctx, wr_id)
 }
 
-func (q *QueuePair) PostSend(wr *SendWorkRequest) error {
-	return q.PostSendImm(wr, 0)
+func (q *QueuePair) PostSend(wr *SendWorkRequest) (uint64, error) {
+	return q.PostSendImm(wr, 1)
 }
 
-func (q *QueuePair) PostSendImm(wr *SendWorkRequest, imm uint32) error {
+func (q *QueuePair) PostSendImm(wr *SendWorkRequest, imm uint32) (uint64, error) {
 	if imm > 0 {
 		// post_send_immediately
 		wr.sendWr.opcode = IBV_WR_SEND_WITH_IMM
@@ -207,26 +202,21 @@ func (q *QueuePair) PostSendImm(wr *SendWorkRequest, imm uint32) error {
 	var bad *C.struct_ibv_send_wr
 
 	errno := C.ibv_post_send(q.qp, wr.sendWr, &bad)
-	return NewErrorOrNil("ibv_post_send", int32(errno))
+	return uint64(wr.sendWr.wr_id), NewErrorOrNil("ibv_post_send", int32(errno))
 }
 
-func (q *QueuePair) PostReceiveWithWait(wr *ReceiveWorkRequest) error {
-	err := q.PostReceive(wr)
+func (q *QueuePair) PostReceiveWithWait(wr *ReceiveWorkRequest, ctx context.Context) error {
+	wr_id, err := q.PostReceive(wr)
 	if err != nil {
 		return err
 	}
 
-	err = q.CompletionQueue.WaitForCompletion()
-	if err != nil {
-		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
-	}
-
-	return nil
+	return q.CompletionQueue.WaitForCompletionId(ctx, wr_id)
 }
 
-func (q *QueuePair) PostReceive(wr *ReceiveWorkRequest) error {
+func (q *QueuePair) PostReceive(wr *ReceiveWorkRequest) (uint64, error) {
 	if q.qp == nil {
-		return QPClosedErr
+		return 0, QPClosedErr
 	}
 
 	var bad *C.struct_ibv_recv_wr
@@ -239,30 +229,25 @@ func (q *QueuePair) PostReceive(wr *ReceiveWorkRequest) error {
 	wr.recvWr.wr_id = wr.createWrId()
 
 	errno := C.ibv_post_recv(q.qp, wr.recvWr, &bad)
-	return NewErrorOrNil("ibv_post_recv", int32(errno))
+	return uint64(wr.recvWr.wr_id), NewErrorOrNil("ibv_post_recv", int32(errno))
 }
 
-func (q *QueuePair) PostWriteWithWait(wr *SendWorkRequest, memType Type) error {
-	err := q.PostWriteImm(wr, memType, 0)
+func (q *QueuePair) PostWriteWithWait(wr *SendWorkRequest, memType Type, ctx context.Context) error {
+	wr_id, err := q.PostWriteImm(wr, memType, 1)
 	if err != nil {
 		return err
 	}
 
-	err = q.CompletionQueue.WaitForCompletion()
-	if err != nil {
-		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
-	}
-
-	return nil
+	return q.CompletionQueue.WaitForCompletionId(ctx, wr_id)
 }
 
-func (q *QueuePair) PostWrite(wr *SendWorkRequest, memType Type) error {
-	return q.PostWriteImm(wr, memType, 0)
+func (q *QueuePair) PostWrite(wr *SendWorkRequest, memType Type) (uint64, error) {
+	return q.PostWriteImm(wr, memType, 1)
 }
 
-func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, memType Type, imm uint32) error {
+func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, memType Type, imm uint32) (uint64, error) {
 	if q.qp == nil {
-		return QPClosedErr
+		return 0, QPClosedErr
 	}
 
 	var bad *C.struct_ibv_send_wr
@@ -295,24 +280,19 @@ func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, memType Type, imm uint32) 
 	}
 
 	errno := C.ibv_post_send(q.qp, wr.sendWr, &bad)
-	return NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
+	return uint64(wr.sendWr.wr_id), NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
 }
 
-func (q *QueuePair) PostReadWithWait(wr *SendWorkRequest, memType Type) error {
-	err := q.PostRead(wr, memType)
+func (q *QueuePair) PostReadWithWait(wr *SendWorkRequest, memType Type, ctx context.Context) error {
+	wr_id, err := q.PostRead(wr, memType)
 	if err != nil {
 		return err
 	}
 
-	err = q.CompletionQueue.WaitForCompletion()
-	if err != nil {
-		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
-	}
-
-	return nil
+	return q.CompletionQueue.WaitForCompletionId(ctx, wr_id)
 }
 
-func (q *QueuePair) PostRead(wr *SendWorkRequest, memType Type) error {
+func (q *QueuePair) PostRead(wr *SendWorkRequest, memType Type) (uint64, error) {
 	var bad *C.struct_ibv_send_wr
 	wr.sendWr.opcode = IBV_WR_RDMA_READ
 	wr.sendWr.send_flags = IBV_SEND_SIGNALED
@@ -339,5 +319,5 @@ func (q *QueuePair) PostRead(wr *SendWorkRequest, memType Type) error {
 	wr.sendWr.wr_id = wr.createWrId()
 
 	errno := C.ibv_post_send(q.qp, wr.sendWr, &bad)
-	return NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
+	return uint64(wr.sendWr.wr_id), NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
 }

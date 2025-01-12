@@ -3,6 +3,7 @@ package gordma
 //#include <infiniband/verbs.h>
 import "C"
 import (
+	"context"
 	"errors"
 	"fmt"
 	"unsafe"
@@ -84,7 +85,7 @@ func destroyCompChannel(channel *C.struct_ibv_comp_channel) C.int {
 // WaitForCompletion waits for the completion of work in the Completion Queue (CQ).
 // This method handles CQ events, requests completion notifications, and checks the status of completed operations.
 // It also waits until a completion event is received and verifies its correctness.
-func(cq *CompletionQueue) WaitForCompletion() error {
+func(cq *CompletionQueue) WaitForCompletion(ctx context.Context) ([]uint64, error) {
 	// Variables to receive CQ event
 	var evCQ *C.struct_ibv_cq
 	var evCtx unsafe.Pointer
@@ -94,12 +95,12 @@ func(cq *CompletionQueue) WaitForCompletion() error {
 	ret := C.ibv_get_cq_event(cq.channel, &evCQ, &evCtx)
 	if ret != 0 {
 		// Error occurred while getting CQ event.
-		return fmt.Errorf("failed to get CQ event: %d", ret)
+		return nil, fmt.Errorf("failed to get CQ event: %d", ret)
 	}
 
 	// Check if the received event matches the expected completion queue.
 	if evCQ != cq.cq {
-		return errors.New("unexpected CQ event")
+		return nil, errors.New("unexpected CQ event")
 	}
 
 	// Acknowledge the CQ event using ibv_ack_cq_events.
@@ -109,17 +110,25 @@ func(cq *CompletionQueue) WaitForCompletion() error {
 	// Request notifications for new events from the CQ.
 	if ret := C.ibv_req_notify_cq(cq.cq, 0); ret != 0 {
 		// Error occurred while requesting CQ notifications.
-		return fmt.Errorf("failed to request CQ notifications: %d", ret)
+		return nil, fmt.Errorf("failed to request CQ notifications: %d", ret)
 	}
+
+	result := make([]uint64, 0)
 
 	// Process completed operations in the CQ.
 	var wc C.struct_ibv_wc
 	for {
+		select {
+		case <-ctx.Done():
+			return result, fmt.Errorf("interrupted by timeout")
+		default:
+		}
+
 		// Call ibv_poll_cq to poll the completion queue and get the work completion result.
 		num := C.ibv_poll_cq(cq.cq, 1, &wc)
 		if num < 0 {
 			// Error occurred while polling CQ.
-			return errors.New("failed to poll CQ")
+			return result, errors.New("failed to poll CQ")
 		}
 		if num == 0 {
 			// If there are no new operations in the CQ, break out of the loop.
@@ -127,29 +136,56 @@ func(cq *CompletionQueue) WaitForCompletion() error {
 		}
 
 		// Check the status of the completed operation.
-		if wc.status != C.IBV_WC_SUCCESS {
+		switch wc.status {
+		case C.IBV_WC_SUCCESS:
+			result = append(result, uint64(wc.wr_id))
+		default:
 			// If the operation's status is not successful, return an error with detailed information.
-			return fmt.Errorf("work completion failed: wr_id=%d status=%s", wc.wr_id, C.GoString(C.ibv_wc_status_str(wc.status)))
+			//return result, fmt.Errorf("work completion failed: wr_id=%d status=%s", wc.wr_id, C.GoString(C.ibv_wc_status_str(wc.status)))
 		}
 	}
 
 	// If all operations are successful, return nil.
-	return nil
+	return result, nil
+}
+
+func(cq *CompletionQueue) WaitForCompletionId(ctx context.Context, wr_id uint64) error {
+	cps, err := cq.WaitForCompletion(ctx)
+	if err != nil {
+		if cps != nil && Contains(cps, wr_id) {
+			return nil
+		}
+
+		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
+	}
+
+	if Contains(cps, wr_id) {
+		return nil
+	}
+
+	return fmt.Errorf("wr_id:%d not WaitForCompletion", wr_id)
 }
 
 // WaitForCompletionBusy waits for the completion of work in the Completion Queue (CQ).
 // This method continuously polls the CQ for completed work requests and checks the status of each completed operation.
 // If there are no completed operations, it continues polling; otherwise, it processes the completed operations.
-func (cq *CompletionQueue) WaitForCompletionBusy() (error) {
+func (cq *CompletionQueue) WaitForCompletionBusy(ctx context.Context) ([]uint64, error) {
 	// Create a slice to hold work completions
     wc := make([]C.struct_ibv_wc, cq.cqe)
+	result := make([]uint64, 0)
 
     for {
+		select {
+		case <-ctx.Done():
+			return result, fmt.Errorf("interrupted by timeout")
+		default:
+		}
+
 		// Poll the CQ for completed operations
         numEvents := C.ibv_poll_cq(cq.cq, C.int(len(wc)), &wc[0])
         if numEvents < 0 {
 			// Error occurred during polling
-            return errors.New("polling CQ failed")
+            return result, errors.New("polling CQ failed")
         }
 
         if numEvents == 0 {
@@ -161,13 +197,15 @@ func (cq *CompletionQueue) WaitForCompletionBusy() (error) {
         completed := wc[:numEvents]
         for _, w := range completed {
 			// Check the status of each completed work item
-            if w.status != C.IBV_WC_SUCCESS {
-				// If the status is not successful, return an error
-                return fmt.Errorf("work completion failed: status=%d wr_id=%d", w.status, w.wr_id)
-            }
+			switch w.status {
+			case C.IBV_WC_SUCCESS:
+				result = append(result, uint64(w.wr_id))
+			default:
+				//return result, fmt.Errorf("work completion failed: status=%d wr_id=%d", w.status, w.wr_id)
+			}
         }
 
 		// If all completed work items have been successfully processed, return nil
-        return nil
+        return result, nil
     }
 }
