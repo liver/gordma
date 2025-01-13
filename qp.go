@@ -233,7 +233,7 @@ func (q *QueuePair) PostReceive(wr *ReceiveWorkRequest) (uint64, error) {
 }
 
 func (q *QueuePair) PostWriteWithWait(wr *SendWorkRequest, memType Type, ctx context.Context) error {
-	wr_id, err := q.PostWriteImm(wr, memType, 1)
+	wr_id, err := q.PostWriteImm(wr, memType, 0)
 	if err != nil {
 		return err
 	}
@@ -242,7 +242,7 @@ func (q *QueuePair) PostWriteWithWait(wr *SendWorkRequest, memType Type, ctx con
 }
 
 func (q *QueuePair) PostWrite(wr *SendWorkRequest, memType Type) (uint64, error) {
-	return q.PostWriteImm(wr, memType, 1)
+	return q.PostWriteImm(wr, memType, 0)
 }
 
 func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, memType Type, imm uint32) (uint64, error) {
