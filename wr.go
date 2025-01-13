@@ -48,11 +48,11 @@ func NewReceiveWorkRequest(mr *MemoryRegion) *ReceiveWorkRequest {
 	}
 }
 
-var wrIDCounter uint64
+var swrIDCounter uint64
 
 func (s *SendWorkRequest) createWrId() C.uint64_t {
 	baseID := uintptr(unsafe.Pointer(&(s.sendWr)))
-	counter := atomic.AddUint64(&wrIDCounter, 1)
+	counter := atomic.AddUint64(&swrIDCounter, 1)
 	return C.uint64_t(baseID) ^ C.uint64_t(counter)
 }
 
@@ -63,8 +63,12 @@ func (wr *SendWorkRequest) String() string {
 		wr.mr.BufRemoteKey())
 }
 
+var rwrIDCounter uint64
+
 func (r *ReceiveWorkRequest) createWrId() C.uint64_t {
-	return C.uint64_t(uintptr(unsafe.Pointer(&(r.recvWr))))
+	baseID := uintptr(unsafe.Pointer(&(r.recvWr)))
+	counter := atomic.AddUint64(&rwrIDCounter, 1)
+	return C.uint64_t(baseID) ^ C.uint64_t(counter)
 }
 
 func (wr *ReceiveWorkRequest) String() string {
