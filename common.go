@@ -67,11 +67,7 @@ func HostToNetLongLong(i uint64) uint64 {
     return binary.BigEndian.Uint64(b)
 }
 
-func Contains(slice []uint64, value uint64) bool {
-	for _, v := range slice {
-		if v == value {
-			return true
-		}
-	}
-	return false
+func Contains(m map[uint64]bool, element uint64) (status bool, ok bool) {
+    status, ok = m[element]
+    return
 }

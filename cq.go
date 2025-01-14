@@ -85,7 +85,7 @@ func destroyCompChannel(channel *C.struct_ibv_comp_channel) C.int {
 // WaitForCompletion waits for the completion of work in the Completion Queue (CQ).
 // This method handles CQ events, requests completion notifications, and checks the status of completed operations.
 // It also waits until a completion event is received and verifies its correctness.
-func(cq *CompletionQueue) WaitForCompletion(ctx context.Context) ([]uint64, error) {
+func(cq *CompletionQueue) WaitForCompletion(ctx context.Context) (map[uint64]bool, error) {
 	// Variables to receive CQ event
 	var evCQ *C.struct_ibv_cq
 	var evCtx unsafe.Pointer
@@ -113,7 +113,7 @@ func(cq *CompletionQueue) WaitForCompletion(ctx context.Context) ([]uint64, erro
 		return nil, fmt.Errorf("failed to request CQ notifications: %d", ret)
 	}
 
-	result := make([]uint64, 0)
+	result := make(map[uint64]bool)
 
 	// Process completed operations in the CQ.
 	var wc C.struct_ibv_wc
@@ -135,14 +135,16 @@ func(cq *CompletionQueue) WaitForCompletion(ctx context.Context) ([]uint64, erro
 			break
 		}
 
-		// Check the status of the completed operation.
-		switch wc.status {
-		case C.IBV_WC_SUCCESS:
-			result = append(result, uint64(wc.wr_id))
-		default:
-			// If the operation's status is not successful, return an error with detailed information.
-			//return result, fmt.Errorf("work completion failed: wr_id=%d status=%s", wc.wr_id, C.GoString(C.ibv_wc_status_str(wc.status)))
-		}
+		result[uint64(wc.wr_id)] = wc.status == C.IBV_WC_SUCCESS
+		// // Check the status of the completed operation.
+		// switch wc.status {
+		// case C.IBV_WC_SUCCESS:
+		// 	result[uint64(wc.wr_id)] = true
+		// default:
+		// 	result[uint64(wc.wr_id)] = false
+		// 	// If the operation's status is not successful, return an error with detailed information.
+		// 	//return result, fmt.Errorf("work completion failed: wr_id=%d status=%s", wc.wr_id, C.GoString(C.ibv_wc_status_str(wc.status)))
+		// }
 	}
 
 	// If all operations are successful, return nil.
@@ -152,27 +154,29 @@ func(cq *CompletionQueue) WaitForCompletion(ctx context.Context) ([]uint64, erro
 func(cq *CompletionQueue) WaitForCompletionId(ctx context.Context, wr_id uint64) error {
 	cps, err := cq.WaitForCompletion(ctx)
 	if err != nil {
-		if cps != nil && Contains(cps, wr_id) {
+		status, ok := Contains(cps, wr_id)
+		if ok && status {
 			return nil
 		}
 
-		return fmt.Errorf("WaitForCompletion failed: %v\n", err)
+		return fmt.Errorf("WaitForCompletion failed ok:%t status:%t :: %v\n", ok, status, err)
 	}
 
-	if Contains(cps, wr_id) {
+	status, ok := Contains(cps, wr_id)
+	if ok && status {
 		return nil
 	}
 
-	return fmt.Errorf("wr_id:%d not WaitForCompletion", wr_id)
+	return fmt.Errorf("wr_id:%d not WaitForCompletion ok:%t status:%t", wr_id, ok, status)
 }
 
 // WaitForCompletionBusy waits for the completion of work in the Completion Queue (CQ).
 // This method continuously polls the CQ for completed work requests and checks the status of each completed operation.
 // If there are no completed operations, it continues polling; otherwise, it processes the completed operations.
-func (cq *CompletionQueue) WaitForCompletionBusy(ctx context.Context) ([]uint64, error) {
+func (cq *CompletionQueue) WaitForCompletionBusy(ctx context.Context) (map[uint64]bool, error) {
 	// Create a slice to hold work completions
     wc := make([]C.struct_ibv_wc, cq.cqe)
-	result := make([]uint64, 0)
+	result := make(map[uint64]bool)
 
     for {
 		select {
@@ -196,13 +200,15 @@ func (cq *CompletionQueue) WaitForCompletionBusy(ctx context.Context) ([]uint64,
 		// Slice of completed work completions
         completed := wc[:numEvents]
         for _, w := range completed {
-			// Check the status of each completed work item
-			switch w.status {
-			case C.IBV_WC_SUCCESS:
-				result = append(result, uint64(w.wr_id))
-			default:
-				//return result, fmt.Errorf("work completion failed: status=%d wr_id=%d", w.status, w.wr_id)
-			}
+			result[uint64(w.wr_id)] = w.status == C.IBV_WC_SUCCESS
+			// // Check the status of each completed work item
+			// switch w.status {
+			// case C.IBV_WC_SUCCESS:
+			// 	result[uint64(w.wr_id)] = true
+			// default:
+			// 	result[uint64(w.wr_id)] = false
+			// 	//return result, fmt.Errorf("work completion failed: status=%d wr_id=%d", w.status, w.wr_id)
+			// }
         }
 
 		// If all completed work items have been successfully processed, return nil

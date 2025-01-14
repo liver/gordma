@@ -147,7 +147,7 @@ func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	if _, err := qp.PostReceive(rwr); err != nil {
 		return fmt.Errorf("PostReceive failed: %v\n", err)
 	}
-	qp.CompletionQueue.WaitForCompletionBusy(context.Background())
+	_, _ = qp.CompletionQueue.WaitForCompletionBusy(context.Background())
 	fmt.Printf("from server R: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
 	
 	for {
