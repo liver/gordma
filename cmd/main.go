@@ -169,8 +169,13 @@ func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	}
 	fmt.Printf("PostReceive wr_id:%d\n", wr_id)
 
-	cs, _ = qp.CompletionQueue.WaitForCompletion(context.Background())
-	fmt.Printf("PostReceive WaitForCompletion cs:%v\n", cs)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	cs, err = qp.CompletionQueue.WaitForCompletionId(ctx, wr_id)
+	if err != nil {
+		return fmt.Errorf("PostReceive WaitForCompletionId %d failed %v:%v", wr_id, cs, err)
+	}
+	fmt.Printf("PostReceive WaitForCompletionId %d cs:%v\n", wr_id, cs)
 
 	fmt.Printf("from server R: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
 	

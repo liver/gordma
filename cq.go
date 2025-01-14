@@ -193,3 +193,39 @@ func (cq *CompletionQueue) WaitForCompletionBusy(ctx context.Context) (map[uint6
 	// If all completed work items have been successfully processed, return
 	return result, nil
 }
+
+// WaitForCompletionId waits for the work request with the specified identifier to complete.
+//
+// Parameters:
+//   - ctx: context
+//   - id: work request identifier
+func (cq *CompletionQueue) WaitForCompletionId(ctx context.Context, id uint64) (map[uint64]bool, error) {
+    wc := make([]C.struct_ibv_wc, cq.cqe)
+	result := make(map[uint64]bool)
+
+    for {
+		select {
+		case <-ctx.Done():
+			return result, fmt.Errorf("interrupted by timeout")
+		default:
+		}
+
+        numEvents := C.ibv_poll_cq(cq.cq, C.int(len(wc)), &wc[0])
+        if numEvents < 0 {
+            return result, errors.New("polling CQ failed")
+        }
+
+        if numEvents == 0 {
+            continue
+        }
+
+        completed := wc[:numEvents]
+        for _, w := range completed {
+			result[uint64(w.wr_id)] = w.status == C.IBV_WC_SUCCESS
+        }
+
+		if _, exists := result[id]; exists {
+			return result, nil
+		}
+    }
+}
