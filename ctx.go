@@ -23,6 +23,7 @@ type RdmaContext struct {
 	portAttr  C.struct_ibv_port_attr
 	gid       C.union_ibv_gid
 	IBV_MTU   int
+	isClosed  bool
 }
 
 type rlimir struct {
@@ -132,11 +133,15 @@ func nextDevice(devicePtr **C.struct_ibv_device) **C.struct_ibv_device {
 }
 
 func (c *RdmaContext) Close() error {
+	if c.isClosed {
+		return fmt.Errorf("CTX is already closed")
+	}
 	errno := C.ibv_close_device(c.ctx)
 	if errno != 0 {
 		return errors.New("failed to close device")
 	}
 	c.ctx = nil
+	c.isClosed = true
 	return nil
 }
 

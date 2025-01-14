@@ -3,9 +3,9 @@ package gordma
 //#include <infiniband/verbs.h>
 import "C"
 import (
-	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"math/rand"
 	"time"
 )
@@ -17,6 +17,7 @@ type QueuePair struct {
 	qp              *C.struct_ibv_qp
 	cq              *C.struct_ibv_cq
 	CompletionQueue *CompletionQueue
+	isClosed        bool
 }
 
 type qpInfo struct {
@@ -82,8 +83,12 @@ func (q *QueuePair) State() uint32 {
 }
 
 func (q *QueuePair) Close() error {
+	if q.isClosed {
+		return fmt.Errorf("QP is already closed")
+	}
 	if q.qp == nil {
-		return nil
+		q.isClosed = true
+		return fmt.Errorf("QP is already closed")
 	}
 
 	errno := C.ibv_destroy_qp(q.qp)
@@ -91,6 +96,7 @@ func (q *QueuePair) Close() error {
 		return errors.New("ibv_destroy_qp failed")
 	}
 	q.qp = nil
+	q.isClosed = true
 	return nil
 }
 
@@ -161,15 +167,6 @@ func (q *QueuePair) Ready2Send() error {
 	return q.modify(&attr, mask)
 }
 
-func (q *QueuePair) PostSendWithWait(wr *SendWorkRequest, ctx context.Context) error {
-	wr_id, err := q.PostSend(wr)
-	if err != nil {
-		return err
-	}
-
-	return q.CompletionQueue.WaitForCompletionId(ctx, wr_id)
-}
-
 func (q *QueuePair) PostSend(wr *SendWorkRequest) (uint64, error) {
 	return q.PostSendImm(wr, 0)
 }
@@ -205,15 +202,6 @@ func (q *QueuePair) PostSendImm(wr *SendWorkRequest, imm uint32) (uint64, error)
 	return uint64(wr.sendWr.wr_id), NewErrorOrNil("ibv_post_send", int32(errno))
 }
 
-func (q *QueuePair) PostReceiveWithWait(wr *ReceiveWorkRequest, ctx context.Context) error {
-	wr_id, err := q.PostReceive(wr)
-	if err != nil {
-		return err
-	}
-
-	return q.CompletionQueue.WaitForCompletionId(ctx, wr_id)
-}
-
 func (q *QueuePair) PostReceive(wr *ReceiveWorkRequest) (uint64, error) {
 	if q.qp == nil {
 		return 0, QPClosedErr
@@ -230,15 +218,6 @@ func (q *QueuePair) PostReceive(wr *ReceiveWorkRequest) (uint64, error) {
 
 	errno := C.ibv_post_recv(q.qp, wr.recvWr, &bad)
 	return uint64(wr.recvWr.wr_id), NewErrorOrNil("ibv_post_recv", int32(errno))
-}
-
-func (q *QueuePair) PostWriteWithWait(wr *SendWorkRequest, memType Type, ctx context.Context) error {
-	wr_id, err := q.PostWriteImm(wr, memType, 0)
-	if err != nil {
-		return err
-	}
-
-	return q.CompletionQueue.WaitForCompletionId(ctx, wr_id)
 }
 
 func (q *QueuePair) PostWrite(wr *SendWorkRequest, memType Type) (uint64, error) {
@@ -281,15 +260,6 @@ func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, memType Type, imm uint32) 
 
 	errno := C.ibv_post_send(q.qp, wr.sendWr, &bad)
 	return uint64(wr.sendWr.wr_id), NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
-}
-
-func (q *QueuePair) PostReadWithWait(wr *SendWorkRequest, memType Type, ctx context.Context) error {
-	wr_id, err := q.PostRead(wr, memType)
-	if err != nil {
-		return err
-	}
-
-	return q.CompletionQueue.WaitForCompletionId(ctx, wr_id)
 }
 
 func (q *QueuePair) PostRead(wr *SendWorkRequest, memType Type) (uint64, error) {

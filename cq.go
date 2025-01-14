@@ -10,9 +10,10 @@ import (
 )
 
 type CompletionQueue struct {
-	cqe     int
-	cq      *C.struct_ibv_cq
-	channel *C.struct_ibv_comp_channel
+	cqe      int
+	cq       *C.struct_ibv_cq
+	channel  *C.struct_ibv_comp_channel
+	isClosed bool
 }
 
 // NewCompletionQueue create new completion queue.
@@ -60,6 +61,10 @@ func (c *CompletionQueue) CompChannel() *C.struct_ibv_comp_channel {
 }
 
 func (c *CompletionQueue) Close() error {
+	if c.isClosed {
+		return fmt.Errorf("CQ is already closed")
+	}
+
 	channel := c.cq.channel
 	errno := destroyCQ(c.cq)
 	if errno != 0 {
@@ -71,6 +76,7 @@ func (c *CompletionQueue) Close() error {
 			return errors.New("ibv_destroy_comp_channel failed")
 		}
 	}
+	c.isClosed = true
 	return nil
 }
 
@@ -89,7 +95,7 @@ func(cq *CompletionQueue) WaitForCompletion(ctx context.Context) (map[uint64]boo
 	// Variables to receive CQ event
 	var evCQ *C.struct_ibv_cq
 	var evCtx unsafe.Pointer
-
+	
 	// Get a CQ event from the channel using ibv_get_cq_event.
     // This function blocks until an event is received.
 	ret := C.ibv_get_cq_event(cq.channel, &evCQ, &evCtx)
@@ -98,25 +104,28 @@ func(cq *CompletionQueue) WaitForCompletion(ctx context.Context) (map[uint64]boo
 		return nil, fmt.Errorf("failed to get CQ event: %d", ret)
 	}
 
-	// Check if the received event matches the expected completion queue.
-	if evCQ != cq.cq {
-		return nil, errors.New("unexpected CQ event")
-	}
-
-	// Acknowledge the CQ event using ibv_ack_cq_events.
-    // This resets the unprocessed event counter in the CQ.
-	C.ibv_ack_cq_events(cq.cq, 1)
-
-	// Request notifications for new events from the CQ.
-	if ret := C.ibv_req_notify_cq(cq.cq, 0); ret != 0 {
-		// Error occurred while requesting CQ notifications.
-		return nil, fmt.Errorf("failed to request CQ notifications: %d", ret)
-	}
-
 	result := make(map[uint64]bool)
+	defer func(r map[uint64]bool, evCQ *C.struct_ibv_cq) {
+		// Check if the received event matches the expected completion queue.
+		if evCQ != cq.cq {
+			fmt.Println(fmt.Errorf("unexpected CQ event"))
+			return
+		}
+
+		// Acknowledge the CQ event using ibv_ack_cq_events.
+		// This resets the unprocessed event counter in the CQ.
+		C.ibv_ack_cq_events(cq.cq, C.uint(len(r)))
+
+		// Request notifications for new events from the CQ.
+		if ret := C.ibv_req_notify_cq(cq.cq, 0); ret != 0 {
+			// Error occurred while requesting CQ notifications.
+			fmt.Println(fmt.Errorf("failed to request CQ notifications: %d", ret))
+			return
+		}
+	}(result, evCQ)
 
 	// Process completed operations in the CQ.
-	var wc C.struct_ibv_wc
+	wc := make([]C.struct_ibv_wc, cq.cqe)
 	for {
 		select {
 		case <-ctx.Done():
@@ -124,50 +133,27 @@ func(cq *CompletionQueue) WaitForCompletion(ctx context.Context) (map[uint64]boo
 		default:
 		}
 
-		// Call ibv_poll_cq to poll the completion queue and get the work completion result.
-		num := C.ibv_poll_cq(cq.cq, 1, &wc)
-		if num < 0 {
-			// Error occurred while polling CQ.
-			return result, errors.New("failed to poll CQ")
-		}
-		if num == 0 {
-			// If there are no new operations in the CQ, break out of the loop.
-			break
-		}
+		// Poll the CQ for completed operations
+        numEvents := C.ibv_poll_cq(cq.cq, C.int(len(wc)), &wc[0])
+        if numEvents < 0 {
+			// Error occurred during polling
+            return result, errors.New("polling CQ failed")
+        }
 
-		result[uint64(wc.wr_id)] = wc.status == C.IBV_WC_SUCCESS
-		// // Check the status of the completed operation.
-		// switch wc.status {
-		// case C.IBV_WC_SUCCESS:
-		// 	result[uint64(wc.wr_id)] = true
-		// default:
-		// 	result[uint64(wc.wr_id)] = false
-		// 	// If the operation's status is not successful, return an error with detailed information.
-		// 	//return result, fmt.Errorf("work completion failed: wr_id=%d status=%s", wc.wr_id, C.GoString(C.ibv_wc_status_str(wc.status)))
-		// }
+        if numEvents == 0 {
+			// If no completed events, break polling
+            break
+        }
+
+		// Slice of completed work completions
+        completed := wc[:numEvents]
+        for _, w := range completed {
+			result[uint64(w.wr_id)] = w.status == C.IBV_WC_SUCCESS
+        }
 	}
 
-	// If all operations are successful, return nil.
+	// If all completed work items have been successfully processed, return
 	return result, nil
-}
-
-func(cq *CompletionQueue) WaitForCompletionId(ctx context.Context, wr_id uint64) error {
-	cps, err := cq.WaitForCompletion(ctx)
-	if err != nil {
-		status, ok := Contains(cps, wr_id)
-		if ok && status {
-			return nil
-		}
-
-		return fmt.Errorf("WaitForCompletion failed ok:%t status:%t :: %v\n", ok, status, err)
-	}
-
-	status, ok := Contains(cps, wr_id)
-	if ok && status {
-		return nil
-	}
-
-	return fmt.Errorf("wr_id:%d not WaitForCompletion ok:%t status:%t", wr_id, ok, status)
 }
 
 // WaitForCompletionBusy waits for the completion of work in the Completion Queue (CQ).
@@ -193,25 +179,17 @@ func (cq *CompletionQueue) WaitForCompletionBusy(ctx context.Context) (map[uint6
         }
 
         if numEvents == 0 {
-			// If no completed events, continue polling
-            continue
+			// If no completed events, break polling
+            break
         }
 
 		// Slice of completed work completions
         completed := wc[:numEvents]
         for _, w := range completed {
 			result[uint64(w.wr_id)] = w.status == C.IBV_WC_SUCCESS
-			// // Check the status of each completed work item
-			// switch w.status {
-			// case C.IBV_WC_SUCCESS:
-			// 	result[uint64(w.wr_id)] = true
-			// default:
-			// 	result[uint64(w.wr_id)] = false
-			// 	//return result, fmt.Errorf("work completion failed: status=%d wr_id=%d", w.status, w.wr_id)
-			// }
         }
-
-		// If all completed work items have been successfully processed, return nil
-        return result, nil
     }
+
+	// If all completed work items have been successfully processed, return
+	return result, nil
 }

@@ -23,6 +23,7 @@ type MemoryRegion struct {
 	notice     uintptr // link to notice
 	noticeSize int // notice length
 	qp         qpInfo
+	isClosed   bool
 }
 
 func NewMemoryRegion(pd *ProtectDomain, bufSize int, noticeSize int) (*MemoryRegion, error) {
@@ -148,6 +149,10 @@ func (m *MemoryRegion) finalize() {
 }
 
 func (m *MemoryRegion) Close() error {
+	if m.isClosed {
+		return fmt.Errorf("MR is already closed")
+	}
+
 	// buf
 	errno := C.ibv_dereg_mr(m.mrBuf)
 	if errno != 0 {
@@ -183,8 +188,9 @@ func (m *MemoryRegion) Close() error {
 		return err
 	}
 	///
-
+	
 	// Disable finalizer
 	runtime.SetFinalizer(m, nil)
+	m.isClosed = true
 	return nil
 }

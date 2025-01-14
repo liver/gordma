@@ -68,11 +68,11 @@ func main() {
 		}
 	}
 
-	qp.Close()
-	cq.Close()
-	mr.Close()
-	pd.Close()
-	c.Close()
+	// qp.Close()
+	// cq.Close()
+	// mr.Close()
+	// pd.Close()
+	// c.Close()
 }
 
 func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
@@ -80,9 +80,12 @@ func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 
 	rwr := gordma.NewReceiveWorkRequest(mr)
 	defer rwr.Close()
-	if err := qp.PostReceiveWithWait(rwr, context.Background()); err != nil {
+	wr_id, err := qp.PostReceive(rwr)
+	if err != nil {
 		return fmt.Errorf("PostReceive failed: %v\n", err)
 	}
+	fmt.Printf("PostReceive wr_id:%d\n", wr_id)
+
 	fmt.Printf("from client R: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
 
 	time.Sleep(time.Microsecond)
@@ -97,9 +100,11 @@ func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	(*localData)[3] = byte(rand.Intn(9))
 	(*localData)[4] = byte(rand.Intn(9))
 	fmt.Printf("from server W: %d%d%d%d%d\n", (*mr.Buffer())[0], (*mr.Buffer())[1], (*mr.Buffer())[2], (*mr.Buffer())[3], (*mr.Buffer())[4])
-	if err := qp.PostWriteWithWait(swr, gordma.MemBuffer, context.Background()); err != nil {
+	wr_id, err = qp.PostWrite(swr, gordma.MemBuffer)
+	if err != nil {
 		return fmt.Errorf("PostWrite failed: %v\n", err)
 	}
+	fmt.Printf("PostWrite wr_id:%d\n", wr_id)
 
 	localNotice := mr.Notice()
 	(*localNotice)[0] = byte(randomInRange(2, 9))
@@ -108,15 +113,22 @@ func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	fmt.Printf("from server S: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
 	
 	time.Sleep(time.Second)
-	if err := qp.PostSendWithWait(swr, context.Background()); err != nil {
+	wr_id, err = qp.PostSend(swr)
+	if err != nil {
 		return fmt.Errorf("PostSend failed: %v\n", err)
 	}
+	fmt.Printf("PostSend wr_id:%d\n", wr_id)
 
 	(*localNotice)[0] = 1
 	fmt.Printf("from server I: %d\n", (*mr.Notice())[0])
-	if _, err := qp.PostWriteImm(swr, gordma.MemNotice, 1); err != nil {
+	wr_id, err = qp.PostWriteImm(swr, gordma.MemNotice, 1)
+	if err != nil {
 		return fmt.Errorf("PostWriteImm failed: %v\n", err)
 	}
+	fmt.Printf("PostWriteImm wr_id:%d\n", wr_id)
+
+	cs, _ := qp.CompletionQueue.WaitForCompletion(context.Background())
+	fmt.Printf("WaitForCompletion cs:%v\n", cs)
 
 	return nil
 }
@@ -131,23 +143,35 @@ func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	(*localNotice)[1] = byte(rand.Intn(9))
 	(*localNotice)[2] = byte(rand.Intn(9))
 	fmt.Printf("from client S: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
-	if err := qp.PostSendWithWait(swr, context.Background()); err != nil {
+	wr_id, err := qp.PostSend(swr)
+	if err != nil {
 		return fmt.Errorf("PostSend failed: %v\n", err)
 	}
+	fmt.Printf("PostSend wr_id:%d\n", wr_id)
+
+	cs, _ := qp.CompletionQueue.WaitForCompletion(context.Background())
+	fmt.Printf("PostSend WaitForCompletion cs:%v\n", cs)
 
 	(*localNotice)[0] = 2
 	fmt.Printf("from client I: %d\n", (*mr.Notice())[0])
-	if _, err := qp.PostWriteImm(swr, gordma.MemNotice, 1); err != nil {
+	wr_id, err = qp.PostWriteImm(swr, gordma.MemNotice, 1)
+	if err != nil {
 		return fmt.Errorf("PostWriteImm failed: %v\n", err)
 	}
+	fmt.Printf("PostWriteImm wr_id:%d\n", wr_id)
 
 	rwr := gordma.NewReceiveWorkRequest(mr)
 	defer rwr.Close()
 	
-	if _, err := qp.PostReceive(rwr); err != nil {
+	wr_id, err = qp.PostReceive(rwr)
+	if err != nil {
 		return fmt.Errorf("PostReceive failed: %v\n", err)
 	}
-	_, _ = qp.CompletionQueue.WaitForCompletionBusy(context.Background())
+	fmt.Printf("PostReceive wr_id:%d\n", wr_id)
+
+	cs, _ = qp.CompletionQueue.WaitForCompletion(context.Background())
+	fmt.Printf("PostReceive WaitForCompletion cs:%v\n", cs)
+
 	fmt.Printf("from server R: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
 	
 	for {
@@ -155,6 +179,9 @@ func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 			break
 		}
 	}
+
+	cs, _ = qp.CompletionQueue.WaitForCompletionBusy(context.Background())
+	fmt.Printf("Notice WaitForCompletionBusy cs:%v\n", cs)
 
 	fmt.Printf("from server I: %d\n", (*mr.Notice())[0])
 	fmt.Printf("from server W: %d%d%d%d%d\n", (*mr.Buffer())[0], (*mr.Buffer())[1], (*mr.Buffer())[2], (*mr.Buffer())[3], (*mr.Buffer())[4])
