@@ -10,10 +10,11 @@ import (
 )
 
 type CompletionQueue struct {
-	cqe      int
-	cq       *C.struct_ibv_cq
-	channel  *C.struct_ibv_comp_channel
-	isClosed bool
+	cqe       int
+	cq        *C.struct_ibv_cq
+	channel   *C.struct_ibv_comp_channel
+	isClosed  bool
+	isClosing bool
 }
 
 // NewCompletionQueue create new completion queue.
@@ -61,6 +62,7 @@ func (c *CompletionQueue) CompChannel() *C.struct_ibv_comp_channel {
 }
 
 func (c *CompletionQueue) Close() error {
+	c.isClosing = true
 	if c.isClosed {
 		return fmt.Errorf("CQ is already closed")
 	}
@@ -171,6 +173,11 @@ func (cq *CompletionQueue) WaitForCompletionBusy(ctx context.Context) (map[uint6
 		default:
 		}
 
+		if cq.isClosed || cq.isClosing {
+			_ = C.ibv_poll_cq(cq.cq, C.int(len(wc)), &wc[0])
+			return nil, fmt.Errorf("CompletionQueue closing")
+		}
+
 		// Poll the CQ for completed operations
         numEvents := C.ibv_poll_cq(cq.cq, C.int(len(wc)), &wc[0])
         if numEvents < 0 {
@@ -210,6 +217,11 @@ func (cq *CompletionQueue) WaitForCompletionId(ctx context.Context, id uint64) (
 		default:
 		}
 
+		if cq.isClosed || cq.isClosing {
+			_ = C.ibv_poll_cq(cq.cq, C.int(len(wc)), &wc[0])
+			return nil, fmt.Errorf("CompletionQueue closing")
+		}
+		
         numEvents := C.ibv_poll_cq(cq.cq, C.int(len(wc)), &wc[0])
         if numEvents < 0 {
             return result, errors.New("polling CQ failed")

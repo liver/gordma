@@ -68,11 +68,11 @@ func main() {
 		}
 	}
 
-	// qp.Close()
-	// cq.Close()
-	// mr.Close()
-	// pd.Close()
-	// c.Close()
+	qp.Close()
+	cq.Close()
+	mr.Close()
+	pd.Close()
+	c.Close()
 }
 
 func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
@@ -127,8 +127,8 @@ func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	}
 	fmt.Printf("PostWriteImm wr_id:%d\n", wr_id)
 
-	cs, _ := qp.CompletionQueue.WaitForCompletion(context.Background())
-	fmt.Printf("WaitForCompletion cs:%v\n", cs)
+	cs, _ := qp.CompletionQueue.WaitForCompletionBusy(context.Background())
+	fmt.Printf("WaitForCompletionBusy cs:%v\n", cs)
 
 	return nil
 }
