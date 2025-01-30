@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 	"unsafe"
 )
 
@@ -161,7 +162,7 @@ func(cq *CompletionQueue) WaitForCompletion(ctx context.Context) (map[uint64]boo
 // WaitForCompletionBusy waits for the completion of work in the Completion Queue (CQ).
 // This method continuously polls the CQ for completed work requests and checks the status of each completed operation.
 // If there are no completed operations, it continues polling; otherwise, it processes the completed operations.
-func (cq *CompletionQueue) WaitForCompletionBusy(ctx context.Context) (map[uint64]bool, error) {
+func (cq *CompletionQueue) WaitForCompletionBusy(ctx context.Context, sleep time.Duration) (map[uint64]bool, error) {
 	// Create a slice to hold work completions
     wc := make([]C.struct_ibv_wc, cq.cqe)
 	result := make(map[uint64]bool)
@@ -195,6 +196,8 @@ func (cq *CompletionQueue) WaitForCompletionBusy(ctx context.Context) (map[uint6
         for _, w := range completed {
 			result[uint64(w.wr_id)] = w.status == C.IBV_WC_SUCCESS
         }
+
+		time.Sleep(sleep)
     }
 
 	// If all completed work items have been successfully processed, return
@@ -206,7 +209,8 @@ func (cq *CompletionQueue) WaitForCompletionBusy(ctx context.Context) (map[uint6
 // Parameters:
 //   - ctx: context
 //   - id: work request identifier
-func (cq *CompletionQueue) WaitForCompletionId(ctx context.Context, id uint64) (map[uint64]bool, error) {
+//   - sleep: interval between iteration
+func (cq *CompletionQueue) WaitForCompletionId(ctx context.Context, id uint64, sleep time.Duration) (map[uint64]bool, error) {
     wc := make([]C.struct_ibv_wc, cq.cqe)
 	result := make(map[uint64]bool)
 
@@ -228,6 +232,7 @@ func (cq *CompletionQueue) WaitForCompletionId(ctx context.Context, id uint64) (
         }
 
         if numEvents == 0 {
+			time.Sleep(sleep)
             continue
         }
 
@@ -239,5 +244,7 @@ func (cq *CompletionQueue) WaitForCompletionId(ctx context.Context, id uint64) (
 		if _, exists := result[id]; exists {
 			return result, nil
 		}
+
+		time.Sleep(sleep)
     }
 }

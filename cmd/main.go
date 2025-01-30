@@ -127,7 +127,7 @@ func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	}
 	fmt.Printf("PostWriteImm wr_id:%d\n", wr_id)
 
-	cs, _ := qp.CompletionQueue.WaitForCompletionBusy(context.Background())
+	cs, _ := qp.CompletionQueue.WaitForCompletionBusy(context.Background(), 0)
 	fmt.Printf("WaitForCompletionBusy cs:%v\n", cs)
 
 	return nil
@@ -175,7 +175,7 @@ func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	cs, err = qp.CompletionQueue.WaitForCompletionId(ctx, wr_id)
+	cs, err = qp.CompletionQueue.WaitForCompletionId(ctx, wr_id, 0)
 	if err != nil {
 		return fmt.Errorf("PostReceive WaitForCompletionId %d failed %v:%v", wr_id, cs, err)
 	}
@@ -189,7 +189,7 @@ func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 		}
 	}
 
-	cs, _ = qp.CompletionQueue.WaitForCompletionBusy(context.Background())
+	cs, _ = qp.CompletionQueue.WaitForCompletionBusy(context.Background(), 0)
 	fmt.Printf("Notice WaitForCompletionBusy cs:%v\n", cs)
 
 	fmt.Printf("from server I: %d\n", (*mr.Notice())[0])
