@@ -38,9 +38,6 @@ func NewCompletionQueue(ctx *RdmaContext, cqe int) (*CompletionQueue, error) {
 		}
 		return nil, errors.New("unknown error")
 	}
-	if ret := C.ibv_req_notify_cq(cq, 0); ret != 0 {
-		return nil, fmt.Errorf("failed to request CQ notifications: %d", ret)
-	}
 	
 	return &CompletionQueue{
 		cqe:      cqe,
@@ -90,6 +87,16 @@ func destroyCompChannel(channel *C.struct_ibv_comp_channel) C.int {
 	return C.ibv_destroy_comp_channel(channel)
 }
 
+// Notify request notifications for new events from the CQ.
+func (c *CompletionQueue) Notify() error {
+	ret := C.ibv_req_notify_cq(c.cq, 0)
+	if ret != 0 {
+		// Error occurred while requesting CQ notifications.
+		return fmt.Errorf("failed to request CQ notifications: %d", ret)
+	}
+	return nil
+}
+
 // WaitForCompletion waits for the completion of work in the Completion Queue (CQ).
 // This method handles CQ events, requests completion notifications, and checks the status of completed operations.
 // It also waits until a completion event is received and verifies its correctness.
@@ -117,13 +124,6 @@ func(cq *CompletionQueue) WaitForCompletion(ctx context.Context) (map[uint64]boo
 		// Acknowledge the CQ event using ibv_ack_cq_events.
 		// This resets the unprocessed event counter in the CQ.
 		C.ibv_ack_cq_events(cq.cq, C.uint(len(r)))
-
-		// Request notifications for new events from the CQ.
-		if ret := C.ibv_req_notify_cq(cq.cq, 0); ret != 0 {
-			// Error occurred while requesting CQ notifications.
-			fmt.Println(fmt.Errorf("failed to request CQ notifications: %d", ret))
-			return
-		}
 	}(result, evCQ)
 
 	// Process completed operations in the CQ.

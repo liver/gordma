@@ -136,6 +136,10 @@ func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	fmt.Printf("%s\n", mr)
 
+	err := qp.CompletionQueue.Notify()
+	if err != nil {
+		return fmt.Errorf("Notify failed: %v\n", err)
+	}
 	swr := gordma.NewSendWorkRequest(mr)
 	defer swr.Close()
 	localNotice := mr.Notice()
