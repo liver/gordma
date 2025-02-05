@@ -45,15 +45,17 @@ func main() {
 		go func (p chan int)  {
 			fmt.Printf("rdma server port: %d\n", <-p)
 		}(portSelection)
-		err := gordma.ConnectQpServer(c, qp, mr, port, portSelection)
+		c, err := gordma.ConnectQpServer(c, qp, mr, port, portSelection)
 		if err != nil {
 			panic(err)
 		}
+		defer c.Close()
 	} else {
-		err := gordma.ConnectQpClient(c, qp, mr, server, port)
+		c, err := gordma.ConnectQpClient(c, qp, mr, server, port)
 		if err != nil {
 			panic(err)
 		}
+		defer c.Close()
 	}
 
 	if *isServer {

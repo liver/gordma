@@ -5,25 +5,25 @@ import "C"
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"net"
 )
 
 var SockSyncMsg string = "sync"
 
-func ConnectQpClient(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, server string, port int) error {
+func ConnectQpClient(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, server string, port int) (net.Conn, error) {
 	if server == "" {
 		server = "localhost"
 	}
 	
 	c, err := net.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if c == nil {
-		return err
+		return nil, errors.New("Connection is nullable.")
 	}
-	defer c.Close()
 
 	bufNew := &bytes.Buffer{}
 
@@ -39,23 +39,27 @@ func ConnectQpClient(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, server s
 	}
 	err = binary.Write(bufNew, binary.BigEndian, localQpInfo)
 	if err != nil {
-		return err
+		c.Close()
+		return nil, err
 	}
 	_, err = c.Write(bufNew.Bytes())
 	if err != nil {
-		return err
+		c.Close()
+		return nil, err
 	}
 
 	buf := make([]byte, 64)
 	cnt, err := c.Read(buf)
 	if err != nil || cnt == 0 {
-		return err
+		c.Close()
+		return nil, err
 	}
 	bufQpInfo := qpInfo{}
 	bufNew = bytes.NewBuffer(buf)
 	err = binary.Read(bufNew, binary.BigEndian, &bufQpInfo)
 	if err != nil {
-		return err
+		c.Close()
+		return nil, err
 	}
 
 	mr.qp = qpInfo{
@@ -72,31 +76,33 @@ func ConnectQpClient(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, server s
 
 	err = modify_qp_to_rts(qp, mr.qp.MTU, mr.qp.Lid, mr.qp.Gid, mr.qp.QpNum, mr.qp.Psn)
 	if err != nil {
-		return err
+		c.Close()
+		return nil, err
 	}
 
 	/* sync with clients */
 	_, err = c.Write([]byte(SockSyncMsg))
 	if err != nil {
-		return err
+		c.Close()
+		return nil, err
 	}
 	_, err = c.Read(buf)
 	if err != nil {
-		return err
+		c.Close()
+		return nil, err
 	}
 
-	return nil
-
+	return c, nil
 }
 
-func ConnectQpServer(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, port int, portSelection chan int) error {
+func ConnectQpServer(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, port int, portSelection chan int) (net.Conn, error) {
 	if port < 0 {
 		port = 0
 	}
 
 	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if portSelection != nil {
@@ -105,24 +111,25 @@ func ConnectQpServer(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, port int
 
 	c, err := l.Accept()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if c == nil {
-		return err
+		return nil, errors.New("Connection is nullable.")
 	}
-	defer c.Close()
 
 	buf := make([]byte, 64)
 	cnt, err := c.Read(buf)
 	if err != nil || cnt == 0 {
-		return err
+		c.Close()
+		return nil, err
 	}
 
 	bufQpInfo := qpInfo{}
 	bufNew := bytes.NewBuffer(buf)
 	err = binary.Read(bufNew, binary.BigEndian, &bufQpInfo)
 	if err != nil {
-		return err
+		c.Close()
+		return nil, err
 	}
 
 	bufNew = &bytes.Buffer{}
@@ -139,11 +146,13 @@ func ConnectQpServer(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, port int
 	}
 	err = binary.Write(bufNew, binary.BigEndian, localQpInfo)
 	if err != nil {
-		return err
+		c.Close()
+		return nil, err
 	}
 	_, err = c.Write(bufNew.Bytes())
 	if err != nil {
-		return err
+		c.Close()
+		return nil, err
 	}
 
 	mr.qp = qpInfo{
@@ -160,20 +169,23 @@ func ConnectQpServer(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, port int
 
 	err = modify_qp_to_rts(qp, mr.qp.MTU, mr.qp.Lid, mr.qp.Gid, mr.qp.QpNum, mr.qp.Psn)
 	if err != nil {
-		return err
+		c.Close()
+		return nil, err
 	}
 
 	/* sync with clients */
 	_, err = c.Read(buf)
 	if err != nil {
-		return err
+		c.Close()
+		return nil, err
 	}
 	_, err = c.Write([]byte(SockSyncMsg))
 	if err != nil {
-		return err
+		c.Close()
+		return nil, err
 	}
 
-	return nil
+	return c, nil
 }
 
 func modify_qp_to_rts(qp *QueuePair, mtu uint32, destLid uint16, destGid [16]byte, destQpNum uint32, destPsn uint32) error {
