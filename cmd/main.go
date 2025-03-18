@@ -102,7 +102,7 @@ func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	(*localData)[3] = byte(rand.Intn(9))
 	(*localData)[4] = byte(rand.Intn(9))
 	fmt.Printf("from server W: %d%d%d%d%d\n", (*mr.Buffer())[0], (*mr.Buffer())[1], (*mr.Buffer())[2], (*mr.Buffer())[3], (*mr.Buffer())[4])
-	wr_id, err = qp.PostWrite(swr, gordma.MemBuffer)
+	wr_id, err = qp.PostWrite(swr, gordma.MemBuffer, len(*localData))
 	if err != nil {
 		return fmt.Errorf("PostWrite failed: %v\n", err)
 	}
@@ -123,7 +123,7 @@ func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 
 	(*localNotice)[0] = 1
 	fmt.Printf("from server I: %d\n", (*mr.Notice())[0])
-	wr_id, err = qp.PostWriteImm(swr, gordma.MemNotice, 1)
+	wr_id, err = qp.PostWriteImm(swr, gordma.MemNotice, 1, 0)
 	if err != nil {
 		return fmt.Errorf("PostWriteImm failed: %v\n", err)
 	}
@@ -160,7 +160,7 @@ func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 
 	(*localNotice)[0] = 2
 	fmt.Printf("from client I: %d\n", (*mr.Notice())[0])
-	wr_id, err = qp.PostWriteImm(swr, gordma.MemNotice, 1)
+	wr_id, err = qp.PostWriteImm(swr, gordma.MemNotice, 1, 0)
 	if err != nil {
 		return fmt.Errorf("PostWriteImm failed: %v\n", err)
 	}

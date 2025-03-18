@@ -17,7 +17,7 @@ func ConnectQpClient(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, server s
 		server = "localhost"
 	}
 	
-	c, err := net.Dial("tcp", fmt.Sprintf("%s:%d", server, port))
+	c, err := net.Dial("tcp", net.JoinHostPort(server, fmt.Sprintf("%d", port)))
 	if err != nil {
 		return nil, err
 	}

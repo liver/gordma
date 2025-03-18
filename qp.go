@@ -220,11 +220,17 @@ func (q *QueuePair) PostReceive(wr *ReceiveWorkRequest) (uint64, error) {
 	return uint64(wr.recvWr.wr_id), NewErrorOrNil("ibv_post_recv", int32(errno))
 }
 
-func (q *QueuePair) PostWrite(wr *SendWorkRequest, memType Type) (uint64, error) {
-	return q.PostWriteImm(wr, memType, 0)
+// PostWrite
+//
+// Parameters:
+//   - wr: work request
+//   - memType: type of memory
+//   - udl: useful data length for memType is MemBuffer
+func (q *QueuePair) PostWrite(wr *SendWorkRequest, memType Type, udl int) (uint64, error) {
+	return q.PostWriteImm(wr, memType, 0, udl)
 }
 
-func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, memType Type, imm uint32) (uint64, error) {
+func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, memType Type, imm uint32, udl int) (uint64, error) {
 	if q.qp == nil {
 		return 0, QPClosedErr
 	}
@@ -246,7 +252,11 @@ func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, memType Type, imm uint32) 
 	switch memType {
 	case MemBuffer:
 		wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrBuf.addr))
-		wr.sge.length = C.uint32_t(wr.mr.mrBuf.length)
+		if udl > 0 {
+			wr.sge.length = C.uint32_t(udl)
+		} else {
+			wr.sge.length = C.uint32_t(wr.mr.mrBuf.length)
+		}
 		wr.sge.lkey = wr.mr.mrBuf.lkey
 		binary.LittleEndian.PutUint64(wr.sendWr.wr[:8], wr.mr.BufRemoteAddr())
 		binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], wr.mr.BufRemoteKey())
@@ -262,7 +272,13 @@ func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, memType Type, imm uint32) 
 	return uint64(wr.sendWr.wr_id), NewErrorOrNil("[PostWrite]ibv_post_send", int32(errno))
 }
 
-func (q *QueuePair) PostRead(wr *SendWorkRequest, memType Type) (uint64, error) {
+// PostRead
+//
+// Parameters:
+//   - wr: work request
+//   - memType: type of memory
+//   - udl: useful data length for memType is MemBuffer
+func (q *QueuePair) PostRead(wr *SendWorkRequest, memType Type, udl int) (uint64, error) {
 	var bad *C.struct_ibv_send_wr
 	wr.sendWr.opcode = IBV_WR_RDMA_READ
 	wr.sendWr.send_flags = IBV_SEND_SIGNALED
@@ -270,7 +286,11 @@ func (q *QueuePair) PostRead(wr *SendWorkRequest, memType Type) (uint64, error) 
 	switch memType {
 	case MemBuffer:
 		wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrBuf.addr))
-		wr.sge.length = C.uint32_t(wr.mr.mrBuf.length)
+		if udl > 0 {
+			wr.sge.length = C.uint32_t(udl)
+		} else {
+			wr.sge.length = C.uint32_t(wr.mr.mrBuf.length)
+		}
 		wr.sge.lkey = wr.mr.mrBuf.lkey
 		binary.LittleEndian.PutUint64(wr.sendWr.wr[:8], wr.mr.BufRemoteAddr())
 		binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], wr.mr.BufRemoteKey())
