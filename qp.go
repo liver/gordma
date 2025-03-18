@@ -252,7 +252,7 @@ func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, memType Type, imm uint32, 
 	switch memType {
 	case MemBuffer:
 		wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrBuf.addr))
-		if udl > 0 {
+		if udl > 0 && udl <= int(wr.mr.mrBuf.length) {
 			wr.sge.length = C.uint32_t(udl)
 		} else {
 			wr.sge.length = C.uint32_t(wr.mr.mrBuf.length)
@@ -286,7 +286,7 @@ func (q *QueuePair) PostRead(wr *SendWorkRequest, memType Type, udl int) (uint64
 	switch memType {
 	case MemBuffer:
 		wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrBuf.addr))
-		if udl > 0 {
+		if udl > 0 && udl <= int(wr.mr.mrBuf.length) {
 			wr.sge.length = C.uint32_t(udl)
 		} else {
 			wr.sge.length = C.uint32_t(wr.mr.mrBuf.length)
