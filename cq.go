@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"time"
 	"unsafe"
 )
@@ -197,7 +198,11 @@ func (cq *CompletionQueue) WaitForCompletionBusy(ctx context.Context, sleep time
 			result[uint64(w.wr_id)] = w.status == C.IBV_WC_SUCCESS
         }
 
-		time.Sleep(sleep)
+		if sleep == 0 {
+			runtime.Gosched()
+		} else {
+			time.Sleep(sleep)
+		}
     }
 
 	// If all completed work items have been successfully processed, return
@@ -232,7 +237,12 @@ func (cq *CompletionQueue) WaitForCompletionId(ctx context.Context, id uint64, s
         }
 
         if numEvents == 0 {
-			time.Sleep(sleep)
+			if sleep == 0 {
+				runtime.Gosched()
+			} else {
+				time.Sleep(sleep)
+			}
+			
             continue
         }
 
@@ -245,6 +255,10 @@ func (cq *CompletionQueue) WaitForCompletionId(ctx context.Context, id uint64, s
 			return result, nil
 		}
 
-		time.Sleep(sleep)
+		if sleep == 0 {
+			runtime.Gosched()
+		} else {
+			time.Sleep(sleep)
+		}
     }
 }
