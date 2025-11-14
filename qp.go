@@ -225,7 +225,7 @@ func (q *QueuePair) PostReceive(wr *ReceiveWorkRequest) (uint64, error) {
 // Parameters:
 //   - wr: work request
 //   - memType: type of memory
-//   - udl: useful data length for memType is MemBuffer
+//   - udl: useful data length for buffers
 func (q *QueuePair) PostWrite(wr *SendWorkRequest, memType Type, udl int) (uint64, error) {
 	return q.PostWriteImm(wr, memType, 0, udl)
 }
@@ -252,7 +252,7 @@ func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, memType Type, imm uint32, 
 	switch memType {
 	case MemBuffer:
 		wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrBuf.addr))
-		if udl > 0 && udl <= int(wr.mr.mrBuf.length) {
+		if udl >= 0 && udl <= int(wr.mr.mrBuf.length) {
 			wr.sge.length = C.uint32_t(udl)
 		} else {
 			wr.sge.length = C.uint32_t(wr.mr.mrBuf.length)
@@ -262,7 +262,7 @@ func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, memType Type, imm uint32, 
 		binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], wr.mr.BufRemoteKey())
 	case MemNotice:
 		wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrNotice.addr))
-		if udl > 0 && udl <= int(wr.mr.mrNotice.length) {
+		if udl >= 0 && udl <= int(wr.mr.mrNotice.length) {
 			wr.sge.length = C.uint32_t(udl)
 		} else {
 			wr.sge.length = C.uint32_t(wr.mr.mrNotice.length)
@@ -281,7 +281,7 @@ func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, memType Type, imm uint32, 
 // Parameters:
 //   - wr: work request
 //   - memType: type of memory
-//   - udl: useful data length for memType is MemBuffer
+//   - udl: useful data length for buffers
 func (q *QueuePair) PostRead(wr *SendWorkRequest, memType Type, udl int) (uint64, error) {
 	var bad *C.struct_ibv_send_wr
 	wr.sendWr.opcode = IBV_WR_RDMA_READ
@@ -290,7 +290,7 @@ func (q *QueuePair) PostRead(wr *SendWorkRequest, memType Type, udl int) (uint64
 	switch memType {
 	case MemBuffer:
 		wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrBuf.addr))
-		if udl > 0 && udl <= int(wr.mr.mrBuf.length) {
+		if udl >= 0 && udl <= int(wr.mr.mrBuf.length) {
 			wr.sge.length = C.uint32_t(udl)
 		} else {
 			wr.sge.length = C.uint32_t(wr.mr.mrBuf.length)
@@ -300,7 +300,7 @@ func (q *QueuePair) PostRead(wr *SendWorkRequest, memType Type, udl int) (uint64
 		binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], wr.mr.BufRemoteKey())
 	case MemNotice:
 		wr.sge.addr = C.uint64_t(uintptr(wr.mr.mrNotice.addr))
-		if udl > 0 && udl <= int(wr.mr.mrNotice.length) {
+		if udl >= 0 && udl <= int(wr.mr.mrNotice.length) {
 			wr.sge.length = C.uint32_t(udl)
 		} else {
 			wr.sge.length = C.uint32_t(wr.mr.mrNotice.length)
