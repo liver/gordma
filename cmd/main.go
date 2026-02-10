@@ -11,7 +11,13 @@ import (
 )
 
 func main() {
-	c, err := gordma.NewRdmaContext("", 1, 0, gordma.IBV_MTU_4096)
+	isServer := flag.Bool("s", false, "init server")
+	server := flag.String("a", "localhost", "addr to bind/connect to")
+	port := flag.Int("p", 8008, "port to bind/connect to")
+	sgid := flag.Int("g", 0, "sgid to use")
+	flag.Parse()
+
+	c, err := gordma.NewRdmaContext("", 1, *sgid, gordma.IBV_MTU_4096)
 	if err != nil {
 		panic(err)
 	}
@@ -34,24 +40,18 @@ func main() {
 		panic(err)
 	}
 
-	isServer := flag.Bool("s", false, "")
-	flag.Parse()
-
-	server := "localhost"
-	port := 8008
-
 	if *isServer {
 		portSelection := make(chan int, 1)
-		go func (p chan int)  {
+		go func(p chan int) {
 			fmt.Printf("rdma server port: %d\n", <-p)
 		}(portSelection)
-		c, err := gordma.ConnectQpServer(c, qp, mr, port, portSelection)
+		c, err := gordma.ConnectQpServer(c, qp, mr, *port, portSelection, uint8(*sgid))
 		if err != nil {
 			panic(err)
 		}
 		defer c.Close()
 	} else {
-		c, err := gordma.ConnectQpClient(c, qp, mr, server, port)
+		c, err := gordma.ConnectQpClient(c, qp, mr, *server, *port, uint8(*sgid))
 		if err != nil {
 			panic(err)
 		}
@@ -113,7 +113,7 @@ func runServer(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	(*localNotice)[1] = byte(rand.Intn(9))
 	(*localNotice)[2] = byte(rand.Intn(9))
 	fmt.Printf("from server S: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
-	
+
 	time.Sleep(time.Second)
 	wr_id, err = qp.PostSend(swr)
 	if err != nil {
@@ -168,7 +168,7 @@ func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 
 	rwr := gordma.NewReceiveWorkRequest(mr)
 	defer rwr.Close()
-	
+
 	wr_id, err = qp.PostReceive(rwr)
 	if err != nil {
 		return fmt.Errorf("PostReceive failed: %v\n", err)
@@ -184,7 +184,7 @@ func runClient(qp *gordma.QueuePair, mr *gordma.MemoryRegion) error {
 	fmt.Printf("PostReceive WaitForCompletionId %d cs:%v\n", wr_id, cs)
 
 	fmt.Printf("from server R: %d%d%d\n", (*mr.Notice())[0], (*mr.Notice())[1], (*mr.Notice())[2])
-	
+
 	for {
 		if (*mr.Notice())[0] == 1 {
 			break
