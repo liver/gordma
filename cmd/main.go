@@ -7,7 +7,7 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/liver/gordma"
+	"github.com/ivagulin/gordma"
 )
 
 func main() {
