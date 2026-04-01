@@ -117,7 +117,7 @@ func (q *QueuePair) Init() error {
 }
 
 // Ready2Receive RTR
-func (q *QueuePair) Ready2Receive(mtu uint32, destGidLocal uint16, destGidGlobal [16]byte, destQpn, destPsn uint32) error {
+func (q *QueuePair) Ready2Receive(mtu uint32, destGidLocal uint16, destGidGlobal [16]byte, destQpn, destPsn uint32, sgid uint8) error {
 	attr := C.struct_ibv_qp_attr{}
 	attr.qp_state = C.IBV_QPS_RTR
 	attr.path_mtu = mtu
@@ -133,19 +133,19 @@ func (q *QueuePair) Ready2Receive(mtu uint32, destGidLocal uint16, destGidGlobal
 	attr.ah_attr.src_path_bits = 0
 	attr.ah_attr.port_num = C.uint8_t(q.port)
 	mask := C.IBV_QP_STATE | C.IBV_QP_AV | C.IBV_QP_PATH_MTU | C.IBV_QP_DEST_QPN |
-		    C.IBV_QP_RQ_PSN | C.IBV_QP_MAX_DEST_RD_ATOMIC | C.IBV_QP_MIN_RNR_TIMER
-	
+		C.IBV_QP_RQ_PSN | C.IBV_QP_MAX_DEST_RD_ATOMIC | C.IBV_QP_MIN_RNR_TIMER
+
 	// for Soft-RoCE (aka RXE)
 	attr.ah_attr.is_global = 1
 	attr.ah_attr.grh.dgid = destGidGlobal
-	attr.ah_attr.grh.flow_label = 0;
-	attr.ah_attr.grh.hop_limit = 1;
-	attr.ah_attr.grh.sgid_index = C.uint8_t(0)
-	attr.ah_attr.grh.traffic_class = 0;
+	attr.ah_attr.grh.flow_label = 0
+	attr.ah_attr.grh.hop_limit = 1
+	attr.ah_attr.grh.sgid_index = C.uint8_t(sgid)
+	attr.ah_attr.grh.traffic_class = 0
 	//
 
 	return q.modify(&attr, mask)
-	
+
 }
 
 // Ready2Send RTS
@@ -241,7 +241,7 @@ func (q *QueuePair) PostWriteImm(wr *SendWorkRequest, memType Type, imm uint32, 
 
 	if imm > 0 {
 		wr.sendWr.send_flags = 0
-	}else {
+	} else {
 		wr.sendWr.send_flags = IBV_SEND_SIGNALED
 	}
 
@@ -309,7 +309,7 @@ func (q *QueuePair) PostRead(wr *SendWorkRequest, memType Type, udl int) (uint64
 		binary.LittleEndian.PutUint64(wr.sendWr.wr[:8], wr.mr.NoticeRemoteAddr())
 		binary.LittleEndian.PutUint32(wr.sendWr.wr[8:12], wr.mr.NoticeRemoteKey())
 	}
-	
+
 	wr.sendWr.sg_list = wr.sge
 	wr.sendWr.num_sge = 1
 	wr.sendWr.next = nil

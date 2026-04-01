@@ -1,4 +1,4 @@
-module github.com/liver/gordma
+module github.com/ivagulin/gordma
 
 go 1.16
 

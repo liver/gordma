@@ -12,11 +12,11 @@ import (
 
 var SockSyncMsg string = "sync"
 
-func ConnectQpClient(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, server string, port int) (net.Conn, error) {
+func ConnectQpClient(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, server string, port int, sgid uint8) (net.Conn, error) {
 	if server == "" {
 		server = "localhost"
 	}
-	
+
 	c, err := net.Dial("tcp", net.JoinHostPort(server, fmt.Sprintf("%d", port)))
 	if err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func ConnectQpClient(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, server s
 		MTU:         NetToHostLong(bufQpInfo.MTU),
 	}
 
-	err = modify_qp_to_rts(qp, mr.qp.MTU, mr.qp.Lid, mr.qp.Gid, mr.qp.QpNum, mr.qp.Psn)
+	err = modify_qp_to_rts(qp, mr.qp.MTU, mr.qp.Lid, mr.qp.Gid, mr.qp.QpNum, mr.qp.Psn, sgid)
 	if err != nil {
 		c.Close()
 		return nil, err
@@ -95,7 +95,7 @@ func ConnectQpClient(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, server s
 	return c, nil
 }
 
-func ConnectQpServer(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, port int, portSelection chan int) (net.Conn, error) {
+func ConnectQpServer(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, port int, portSelection chan int, sgid uint8) (net.Conn, error) {
 	if port < 0 {
 		port = 0
 	}
@@ -167,7 +167,7 @@ func ConnectQpServer(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, port int
 		MTU:         uint32(ctx.IBV_MTU),
 	}
 
-	err = modify_qp_to_rts(qp, mr.qp.MTU, mr.qp.Lid, mr.qp.Gid, mr.qp.QpNum, mr.qp.Psn)
+	err = modify_qp_to_rts(qp, mr.qp.MTU, mr.qp.Lid, mr.qp.Gid, mr.qp.QpNum, mr.qp.Psn, sgid)
 	if err != nil {
 		c.Close()
 		return nil, err
@@ -188,13 +188,13 @@ func ConnectQpServer(ctx *RdmaContext, qp *QueuePair, mr *MemoryRegion, port int
 	return c, nil
 }
 
-func modify_qp_to_rts(qp *QueuePair, mtu uint32, destLid uint16, destGid [16]byte, destQpNum uint32, destPsn uint32) error {
+func modify_qp_to_rts(qp *QueuePair, mtu uint32, destLid uint16, destGid [16]byte, destQpNum uint32, destPsn uint32, sgid uint8) error {
 	err := qp.Init()
 	if err != nil {
 		return err
 	}
 
-	err = qp.Ready2Receive(mtu, destLid, destGid, destQpNum, destPsn)
+	err = qp.Ready2Receive(mtu, destLid, destGid, destQpNum, destPsn, sgid)
 	if err != nil {
 		return err
 	}
